@@ -60,10 +60,11 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
-        <!-- Flyway 数据库迁移:启动时自动执行 db/migration 下的版本脚本;MySQL 方言在独立模块 -->
+        <!-- Flyway 数据库迁移:启动时自动执行 db/migration 下的版本脚本。
+             Boot 4 自动配置已模块化,必须用 starter(内含 flyway-core);MySQL 方言在独立模块 -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
