@@ -13,7 +13,7 @@ import com.llm.gateway.config.GatewayProperties;
  * 基于内存的精确缓存，带 TTL 过期（惰性清理）。
  *
  * <p>对「同样问题被反复问」的场景（FAQ、固定 prompt 抽取）能直接省下供应商调用成本。
- * 多实例/跨重启场景配置 {@code gateway.cache.store=redis} 切换到 {@code RedisResponseCache}。
+ * 多实例/跨重启场景配置 {@code gateway.cache.store=redis} 切换到 {@link RedisResponseCache}。
  */
 @Component
 @ConditionalOnProperty(name = "gateway.cache.store", havingValue = "memory", matchIfMissing = true)
