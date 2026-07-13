@@ -64,7 +64,7 @@ management:
         include: health, info, metrics, prometheus
 
 # ===================== 网关配置 =====================
-# 说明：API Key、路由规则、计费单价已迁移到数据库（见 schema.sql / seed.sql），不再写在这里。
+# 说明：API Key、路由规则、计费单价已迁移到数据库（见 db/migration 迁移脚本），不再写在这里。
 gateway:
   # ---- 路由：默认物理模型（请求 model 无法识别时回退）----
   routing:

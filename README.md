@@ -44,7 +44,7 @@ docker compose up -d --build
 ## 本地开发
 
 ```bash
-# 后端(需 JDK 21 + 本地 MySQL 8,先执行 schema.sql/seed.sql)
+# 后端(需 JDK 21 + 本地 MySQL 8,建空库 llm_gateway 即可,启动自动执行 Flyway 迁移)
 cd llm-gateway && mvn spring-boot:run     # 业务 8080,管理端口 9090
 
 # 前端(Vite dev server,/admin、/v1 代理到 8080)

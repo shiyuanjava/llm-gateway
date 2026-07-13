@@ -41,7 +41,7 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 | `model_pricing` | 配置 | 模型每 1K Token 计费单价 |
 | `request_log` | 记录 | 每次请求的审计、用量、成本(也是配额数据源) |
 
-- 建表脚本:`src/main/resources/schema.sql`(每个字段都带 `COMMENT`);种子数据:`seed.sql`。
+- 建表与种子脚本:`src/main/resources/db/migration/`(Flyway 版本化:`V1__baseline_schema.sql` 建表、`V2__seed_demo_data.sql` 演示数据;启动自动迁移,已发布脚本永不修改,变更加 V3+)。
 - ORM:**MyBatis-Plus**(Boot 4 须用 `mybatis-plus-spring-boot4-starter`,本项目用 `3.5.16`)。实体 `persistence/entity`、Mapper `persistence/mapper`、领域仓储 `persistence/repository`(接口 + 实现,屏蔽存储细节、便于单测注入假实现)。
 - 配置类服务(`ApiKeyService` / `RuleBasedRouter` / `CostCalculator`)启动时从 DB 加载并缓存;`QuotaService` 按 `request_log` 实时聚合;`GatewayService` 在每次请求收尾时写入一条 `request_log`(success / cache_hit / error)。
 
@@ -113,10 +113,9 @@ com.llm.gateway
 
 ```bash
 mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS llm_gateway DEFAULT CHARACTER SET utf8mb4;"
-# 注意：Windows 下导入含中文 COMMENT 的脚本要加 --default-character-set=utf8mb4
-mysql --default-character-set=utf8mb4 -uroot -p llm_gateway < src/main/resources/schema.sql
-mysql --default-character-set=utf8mb4 -uroot -p llm_gateway < src/main/resources/seed.sql
 ```
+
+只需建空库——启动时 Flyway 自动建表并灌入种子数据(脚本在 `src/main/resources/db/migration/`)。
 
 数据库连接默认走环境变量(见 `application.yaml`,缺省值:localhost:3306 / root / 123456 / llm_gateway):
 
@@ -176,7 +175,8 @@ docker compose up -d --build
 | ui(nginx) | 宿主机 `${UI_PORT:-8081}` | 托管管理台,`/admin`、`/v1` 同源反代到网关(浏览器零跨域,SSE 不缓冲) |
 | gateway | 8080(仅容器网络) | 业务端口,不映射宿主机 |
 | gateway | 9090(仅容器网络) | Actuator 管理端口:`/actuator/health`、`/actuator/metrics`、`/actuator/prometheus`,供 healthcheck 与 Prometheus 抓取 |
-| mysql | 3306(仅容器网络) | 数据持久化在 named volume `mysql-data`,首启自动执行 schema.sql / seed.sql |
+| mysql | 3306(仅容器网络) | 数据持久化在 named volume `mysql-data`;建表/种子由 gateway 启动时 Flyway 自动迁移 |
+| redis | 6379(仅容器网络) | 响应缓存(纯缓存不持久化,LRU 256MB);gateway 对其故障 fail-open |
 
 - API 调用:`http://<host>:${UI_PORT}/v1/chat/completions`(Bearer API Key,经 nginx 反代,SSE 不缓冲)。Key 可用 seed 预置的演示 Key `sk-demo-tenant-a`,或在管理台新建一个 `sk-gw-` 开头的 Key。
 - 日志:`docker compose logs -f gateway`(控制台);容器内 `/app/logs/gateway.log`(prod profile,按天 + 100MB 滚动,保留 14 天,总量 2GB;注意日志在容器写层,容器重建即丢,如需留存可给 `/app/logs` 挂 volume)。每行日志含 traceId,与响应头 `X-Request-Id`、`request_log.request_id` 同 ID,可互查。

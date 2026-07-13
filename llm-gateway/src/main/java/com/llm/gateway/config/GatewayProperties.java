@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 网关的外置配置（前缀 {@code gateway}）。
  *
- * <p>注意：API Key、路由规则、计费单价已迁移到<strong>数据库</strong>（见 {@code schema.sql}），
+ * <p>注意：API Key、路由规则、计费单价已迁移到<strong>数据库</strong>（见 {@code db/migration}），
  * 不再放在这里。本配置只保留运营参数：默认模型、默认 LLM、供应商接入、限流、配额、缓存、护栏、容错。
  *
  * @param routing    路由相关参数（默认物理模型）
