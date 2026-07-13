@@ -1,0 +1,11 @@
+target/
+logs/
+.idea/
+.claude/
+.mvn/
+mvnw
+mvnw.cmd
+Dockerfile
+docker-compose.yml
+.env
+.env.example

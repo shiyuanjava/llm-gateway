@@ -1,0 +1,122 @@
+spring:
+  application:
+    name: llm-gateway
+  # 流式响应会长时间占用请求线程（生成可达分钟级），虚拟线程使其不消耗平台线程池
+  threads:
+    virtual:
+      enabled: true
+  # 优雅停机第二段:给进行中的请求(含 SSE 流)最多 30s 收尾
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  jackson:
+    # 默认 camelCase（管理端 Admin API 与前端一致）；OpenAI/供应商 DTO 用 @JsonProperty 单独固定 snake_case
+    default-property-inclusion: non_null
+    deserialization:
+      # 容忍各供应商响应里把基本类型字段给成 null（Jackson 3 默认会报错），null -> 0
+      fail-on-null-for-primitives: false
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:llm_gateway}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+# 优雅停机:SIGTERM 后不再接受新请求,等待进行中的请求完成
+server:
+  shutdown: graceful
+
+# MyBatis-Plus：下划线<->驼峰自动映射，主键自增
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-statement-timeout: 5
+  global-config:
+    db-config:
+      id-type: auto
+
+# Actuator:管理端口分离(主端口 8080 上 /actuator/** 不存在);
+# 9090 仅容器网络/内网使用(healthcheck、Prometheus 抓取),部署时不映射宿主机
+management:
+  server:
+    port: ${GATEWAY_MANAGEMENT_PORT:9090}
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+
+# ===================== 网关配置 =====================
+# 说明：API Key、路由规则、计费单价已迁移到数据库（见 schema.sql / seed.sql），不再写在这里。
+gateway:
+  # ---- 路由：默认物理模型（请求 model 无法识别时回退）----
+  routing:
+    default-model: deepseek-v4-pro
+
+  # ---- 默认 LLM：请求 model 填 "default" 时走它（由 LLM_PROVIDER/LLM_MODEL 注入）----
+  llm:
+    provider: ${LLM_PROVIDER:deepseek}
+    model: ${LLM_MODEL:deepseek-v4-pro}
+
+  # ---- 供应商接入（密钥用环境变量注入；缺省为空则该供应商不可用，会自动 Fallback）----
+  providers:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY:}
+    openai:
+      base-url: https://api.openai.com/v1
+      api-key: ${OPENAI_API_KEY:}
+    anthropic:
+      base-url: https://api.anthropic.com/v1
+      api-key: ${ANTHROPIC_API_KEY:}
+    mock:
+      base-url: ""
+      api-key: ""
+
+  # ---- 限流 ----
+  rate-limit:
+    requests-per-minute: 60
+
+  # ---- 配额 ----
+  quota:
+    tokens-per-tenant: 1000000
+
+  # ---- 缓存 ----
+  cache:
+    enabled: true
+    ttl-seconds: 300
+    semantic:
+      enabled: false
+      similarity-threshold: 0.92
+
+  # ---- 安全护栏 ----
+  guardrail:
+    sensitive-words: [ "制造炸弹", "自杀方法" ]
+
+  # ---- 容错 ----
+  resilience:
+    max-retries: 2
+    circuit-breaker:
+      failure-threshold: 5
+      open-seconds: 30
+
+  # ---- 出站 HTTP（调用供应商）超时 ----
+  http:
+    connect-timeout-ms: 5000
+    read-timeout-ms: 30000
+
+  # ---- 管理端鉴权 ----
+  admin:
+    jwt-secret: ${GATEWAY_JWT_SECRET:}
+    token-ttl-minutes: 120
+    bootstrap-username: ${ADMIN_USERNAME:}
+    bootstrap-password: ${ADMIN_PASSWORD:}
+    # 管理端跨域白名单(逗号分隔)。开发默认放行 Vite dev server;
+    # 生产(prod profile)默认收敛为空 —— nginx 同源反代下浏览器不发跨域请求
+    allowed-origins: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:http://localhost:5173}

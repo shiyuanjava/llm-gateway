@@ -1,0 +1,5 @@
+# 生产 profile 差异(SPRING_PROFILES_ACTIVE=prod 激活;文件日志见 logback-spring.xml 的 prod springProfile)
+gateway:
+  admin:
+    # 同源反代部署默认零跨域;确需分域时用 GATEWAY_ADMIN_ALLOWED_ORIGINS 打开(逗号分隔)
+    allowed-origins: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:}

@@ -1,0 +1,99 @@
+/* ===== 设计令牌（语义化，不在组件里写裸 hex）===== */
+:root {
+  /* 品牌主色：专业靛蓝。覆盖 Element Plus 主色梯度 */
+  --el-color-primary: #4f46e5;
+  --el-color-primary-light-3: #7b74ec;
+  --el-color-primary-light-5: #a7a2f2;
+  --el-color-primary-light-7: #d3d1f8;
+  --el-color-primary-light-8: #e9e8fb;
+  --el-color-primary-light-9: #f4f3fe;
+  --el-color-primary-dark-2: #3f38b7;
+
+  /* 中性/表面 */
+  --app-bg: #f5f6fa;
+  --app-surface: #ffffff;
+  --app-border: #e8eaf0;
+  --app-text: #1f2333;
+  --app-text-secondary: #6b7280;
+
+  /* 侧边栏（深色）*/
+  --app-sidebar-bg: #1b1f33;
+  --app-sidebar-bg-soft: #232845;
+  --app-sidebar-text: #c2c6d8;
+  --app-sidebar-active: #ffffff;
+
+  /* 间距节奏（8pt）*/
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --radius: 10px;
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, .04), 0 4px 14px rgba(17, 24, 39, .05);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--app-text);
+  background: var(--app-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 数字列用等宽数字，避免跳动（token/成本/延迟）*/
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 页面通用容器 */
+.page {
+  padding: var(--space-6);
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+  gap: var(--space-4);
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -.01em;
+}
+.page-subtitle {
+  color: var(--app-text-secondary);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* 卡片 */
+.surface {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+.toolbar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+.toolbar .spacer { flex: 1; }
+
+.el-table {
+  border-radius: var(--radius);
+}
