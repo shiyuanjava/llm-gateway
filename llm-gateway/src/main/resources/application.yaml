@@ -14,6 +14,13 @@ spring:
     deserialization:
       # 容忍各供应商响应里把基本类型字段给成 null（Jackson 3 默认会报错），null -> 0
       fail-on-null-for-primitives: false
+  # Redis 连接(仅 gateway.cache.store=redis 时实际使用;Lettuce 惰性连接,memory 模式不连)
+  # timeout 1s:Redis 挂死时请求最多等 1s,配合 fail-open 不拖垮主链路
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 1s
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:llm_gateway}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${MYSQL_USER:root}
@@ -44,6 +51,10 @@ mybatis-plus:
 management:
   server:
     port: ${GATEWAY_MANAGEMENT_PORT:9090}
+  # 缓存 fail-open:Redis 挂了网关照常服务,不能让 health 整体 DOWN 误导 compose healthcheck
+  health:
+    redis:
+      enabled: false
   endpoint:
     health:
       show-details: always
@@ -90,6 +101,8 @@ gateway:
   # ---- 缓存 ----
   cache:
     enabled: true
+    # 缓存后端:memory 单机内存 / redis(跨重启、多实例共享)
+    store: memory
     ttl-seconds: 300
     semantic:
       enabled: false

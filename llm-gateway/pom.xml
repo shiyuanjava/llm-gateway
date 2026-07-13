@@ -54,6 +54,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Redis 响应缓存(可选,gateway.cache.store=redis 时启用);Lettuce 客户端 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- MyBatis-Plus：持久化（配置与记录入库）。Boot 4 必须用专用的 spring-boot4 starter -->
         <dependency>
             <groupId>com.baomidou</groupId>

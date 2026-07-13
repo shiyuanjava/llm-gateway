@@ -3,6 +3,7 @@ package com.llm.gateway.cache;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.llm.gateway.api.dto.ChatCompletionResponse;
@@ -12,9 +13,10 @@ import com.llm.gateway.config.GatewayProperties;
  * 基于内存的精确缓存，带 TTL 过期（惰性清理）。
  *
  * <p>对「同样问题被反复问」的场景（FAQ、固定 prompt 抽取）能直接省下供应商调用成本。
- * 生产环境多实例时应替换为 Redis 实现——接口 {@link ResponseCache} 已为此预留。
+ * 多实例/跨重启场景配置 {@code gateway.cache.store=redis} 切换到 {@code RedisResponseCache}。
  */
 @Component
+@ConditionalOnProperty(name = "gateway.cache.store", havingValue = "memory", matchIfMissing = true)
 public class ExactMatchCache implements ResponseCache {
 
     private final ConcurrentHashMap<String, Entry> store = new ConcurrentHashMap<>();
