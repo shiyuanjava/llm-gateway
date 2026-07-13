@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
 import com.llm.gateway.config.ConfigReloadable;
@@ -21,7 +20,6 @@ import com.llm.gateway.persistence.repository.ApiKeyRepository;
  * <p>索引以 SHA-256 哈希为键，明文 Key 不进入内存索引。
  */
 @Service
-@DependsOn("apiKeyHashMigration")
 public class ApiKeyService implements ConfigReloadable {
 
     private final ApiKeyRepository apiKeyRepository;
