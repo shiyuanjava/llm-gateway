@@ -18,7 +18,7 @@
 - **鉴权与安全**:API Key SHA-256 哈希存储(`sk-gw-` 前缀、一次性展示);管理端 JWT 账号密码登录(BCrypt + 登录防爆破锁定);操作审计落库
 - **多供应商路由**:别名 → 首选/升级/降级链(DeepSeek / OpenAI / Anthropic / Mock),重试 + 熔断 + Fallback
 - **治理**:令牌桶限流、租户 Token 配额、敏感词/提示注入护栏(流式增量截断)
-- **缓存**:精确匹配缓存(语义缓存预留),命中直接回放(含 SSE 回放)
+- **缓存**:精确匹配缓存,后端可切换(内存单机 / Redis 跨重启多实例共享,compose 默认 Redis;语义缓存预留),命中直接回放(含 SSE 回放)
 - **精确计费**:优先采信上游 usage,jtokkit 估算兜底;缓存读写单价四段计价;定价缺失 fail-close(422 拒绝,不打上游)
 - **可观测**:traceId 全链路贯穿(请求头 `X-Request-Id` ↔ 日志 MDC ↔ `request_log.request_id` 同 ID);Prometheus 指标(QPS/错误/Token/成本/延迟/TTFT)在独立管理端口;结构化访问日志 + 滚动文件
 - **管理台**:概览(按租户用量/上游成本/缓存命中)、API Key、路由规则、计费单价、请求日志与操作审计(时间范围筛选)、Playground 流式试运行
