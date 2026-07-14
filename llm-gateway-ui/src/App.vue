@@ -2,12 +2,34 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, User } from '@element-plus/icons-vue'
+import { Refresh, User, Fold, Expand } from '@element-plus/icons-vue'
 import { metaApi } from './api'
 import { getUsername, clearSession } from './auth/session'
 
 const route = useRoute()
 const router = useRouter()
+
+// 侧边栏折叠:localStorage 记住手动偏好;不可用时(隐私模式)退化为内存态
+const COLLAPSE_KEY = 'ui:sidebar-collapsed'
+
+function readStoredCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const collapsed = ref(readStoredCollapsed())
+
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+  try {
+    localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
+  } catch {
+    /* 仅内存态 */
+  }
+}
 
 const isLogin = computed(() => route.path === '/login')
 // 依赖 route.path:登录/退出都会切路由,借此让用户名重新读取 localStorage
@@ -62,30 +84,49 @@ watch(isLogin, (v) => {
 <template>
   <router-view v-if="isLogin" />
   <el-container v-else class="layout">
-    <el-aside width="232px" class="sidebar">
+    <el-aside
+      :width="collapsed ? '64px' : '232px'"
+      class="sidebar"
+      :class="{ 'is-collapsed': collapsed }"
+    >
       <div class="brand">
         <div class="brand-mark">
           <el-icon :size="20"><Cpu /></el-icon>
         </div>
-        <div class="brand-text">
+        <div v-if="!collapsed" class="brand-text">
           <div class="brand-name">LLM Gateway</div>
           <div class="brand-sub">控制台</div>
         </div>
       </div>
 
-      <el-menu :default-active="route.path" router class="menu" :collapse="false">
+      <el-menu
+        :default-active="route.path"
+        router
+        class="menu"
+        :collapse="collapsed"
+        :collapse-transition="false"
+      >
         <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
           <el-icon><component :is="m.icon" /></el-icon>
           <span>{{ m.title }}</span>
         </el-menu-item>
       </el-menu>
 
-      <div class="sidebar-foot">
+      <div v-if="!collapsed" class="sidebar-foot">
         <div class="foot-label">默认模型</div>
         <div class="foot-value tabular-nums">
           {{ meta.defaultProvider }} / {{ meta.defaultModel }}
         </div>
       </div>
+
+      <button
+        class="collapse-toggle"
+        :title="collapsed ? '展开菜单' : '收起菜单'"
+        @click="toggleSidebar"
+      >
+        <el-icon><Expand v-if="collapsed" /><Fold v-else /></el-icon>
+        <span v-if="!collapsed">收起</span>
+      </button>
     </el-aside>
 
     <el-container>
@@ -135,6 +176,8 @@ watch(isLogin, (v) => {
   display: flex;
   flex-direction: column;
   border-right: none;
+  transition: width 0.2s ease;
+  overflow: hidden;
 }
 .brand {
   display: flex;
@@ -202,6 +245,38 @@ watch(isLogin, (v) => {
   color: #e6e8f2;
   margin-top: 4px;
   word-break: break-all;
+}
+
+/* 折叠态:brand 居中只留 logo,菜单收窄 */
+.is-collapsed .brand {
+  justify-content: center;
+  padding: 20px 0 16px;
+}
+.is-collapsed .menu {
+  padding: 6px 8px;
+}
+.menu:not(.el-menu--collapse) {
+  width: 100%;
+}
+
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--app-sidebar-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.collapse-toggle:hover {
+  background: var(--app-sidebar-bg-soft);
+  color: #fff;
 }
 
 .header {
