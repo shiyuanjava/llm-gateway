@@ -44,7 +44,7 @@ public final class Fixtures {
                 new Routing("deepseek-v4-pro"),
                 new Llm("deepseek", "deepseek-v4-pro"),
                 Map.of("mock", new ProviderConfig("", "")),
-                new RateLimit(requestsPerMinute),
+                new RateLimit("memory", requestsPerMinute),
                 new Quota(tokensPerTenant),
                 new Cache(true, "memory", cacheTtlSeconds, new Cache.Semantic(false, 0.92)),
                 new Guardrail(List.of("制造炸弹")),

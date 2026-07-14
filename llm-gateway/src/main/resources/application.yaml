@@ -1,6 +1,31 @@
 spring:
   application:
     name: llm-gateway
+  config:
+    # optional: Nacos 不可达时用本地配置兜底启动,不失败
+    import: "optional:nacos:llm-gateway.yaml"
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        # 文件扩展名决定 Nacos 侧配置的解析器
+        file-extension: yaml
+      discovery:
+        # 本地无 Nacos 时避免注册失败刷屏:由环境变量整体开关
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8858}
+      # 首次请求才初始化会丢第一批指标,eager 提前建立心跳
+      eager: true
+      datasource:
+        param-flow:
+          nacos:
+            server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+            data-id: llm-gateway-param-flow-rules
+            group-id: DEFAULT_GROUP
+            data-type: json
+            rule-type: param-flow
   # 流式响应会长时间占用请求线程（生成可达分钟级），虚拟线程使其不消耗平台线程池
   threads:
     virtual:
@@ -92,6 +117,8 @@ gateway:
 
   # ---- 限流 ----
   rate-limit:
+    # memory: 单机令牌桶(本地开发,无 Nacos 依赖)/ sentinel: 热点参数限流(规则在 Nacos)
+    store: ${GATEWAY_RATE_LIMIT_STORE:memory}
     requests-per-minute: 60
 
   # ---- 配额 ----

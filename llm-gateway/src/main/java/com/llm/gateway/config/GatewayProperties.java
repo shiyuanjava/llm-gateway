@@ -72,9 +72,10 @@ public record GatewayProperties(
     /**
      * 限流配置。
      *
-     * @param requestsPerMinute 每租户每分钟允许的请求数
+     * @param store             限流实现:memory(单机令牌桶)/ sentinel(热点参数限流)
+     * @param requestsPerMinute 每租户每分钟允许的请求数(memory 实现使用;sentinel 阈值在规则里)
      */
-    public record RateLimit(int requestsPerMinute) {
+    public record RateLimit(String store, int requestsPerMinute) {
     }
 
     /**
