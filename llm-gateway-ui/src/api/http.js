@@ -11,7 +11,7 @@ import { getToken, clearSession } from '../auth/session'
 const http = axios.create({
   // 生产部署时通过 VITE_API_BASE 指定后端地址；开发期留空走 Vite proxy
   baseURL: import.meta.env.VITE_API_BASE || '',
-  timeout: 30000
+  timeout: 30000,
 })
 
 http.interceptors.request.use((config) => {

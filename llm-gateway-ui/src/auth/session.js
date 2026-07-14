@@ -6,8 +6,12 @@ const TOKEN_KEY = 'gw_admin_token'
 const USER_KEY = 'gw_admin_user'
 const EXPIRES_KEY = 'gw_admin_expires_at'
 
-export function getToken() { return localStorage.getItem(TOKEN_KEY) || '' }
-export function getUsername() { return localStorage.getItem(USER_KEY) || '' }
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+export function getUsername() {
+  return localStorage.getItem(USER_KEY) || ''
+}
 export function getExpiresAt() {
   const v = localStorage.getItem(EXPIRES_KEY)
   return v ? Number(v) : 0

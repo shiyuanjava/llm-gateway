@@ -42,15 +42,31 @@ async function submit() {
       <el-form @keyup.enter="submit">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名" size="large">
-            <template #prefix><el-icon><User /></el-icon></template>
+            <template #prefix
+              ><el-icon><User /></el-icon
+            ></template>
           </el-input>
         </el-form-item>
         <el-form-item>
-          <el-input v-model="form.password" type="password" placeholder="密码" size="large" show-password>
-            <template #prefix><el-icon><Lock /></el-icon></template>
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="密码"
+            size="large"
+            show-password
+          >
+            <template #prefix
+              ><el-icon><Lock /></el-icon
+            ></template>
           </el-input>
         </el-form-item>
-        <el-button type="primary" size="large" style="width:100%" :loading="loading" @click="submit">
+        <el-button
+          type="primary"
+          size="large"
+          style="width: 100%"
+          :loading="loading"
+          @click="submit"
+        >
           登 录
         </el-button>
       </el-form>
@@ -65,8 +81,22 @@ async function submit() {
   place-items: center;
   background: var(--app-sidebar-bg, #f5f7fa);
 }
-.login-card { width: 360px; padding: 40px 36px 32px; }
-.login-brand { text-align: center; margin-bottom: 28px; }
-.brand-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-.brand-sub { color: var(--app-text-secondary, #909399); font-size: 13px; margin-top: 4px; }
+.login-card {
+  width: 360px;
+  padding: 40px 36px 32px;
+}
+.login-brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.brand-sub {
+  color: var(--app-text-secondary, #909399);
+  font-size: 13px;
+  margin-top: 4px;
+}
 </style>

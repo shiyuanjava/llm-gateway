@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/admin': { target: 'http://localhost:8080', changeOrigin: true },
-      '/v1': { target: 'http://localhost:8080', changeOrigin: true }
-    }
-  }
+      '/v1': { target: 'http://localhost:8080', changeOrigin: true },
+    },
+  },
 })

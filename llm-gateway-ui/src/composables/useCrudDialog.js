@@ -20,7 +20,11 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
 
   async function load() {
     loading.value = true
-    try { rows.value = await api.list() } finally { loading.value = false }
+    try {
+      rows.value = await api.list()
+    } finally {
+      loading.value = false
+    }
   }
 
   function openCreate() {
@@ -57,9 +61,18 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
   }
 
   async function remove(row) {
-    const confirmed = await ElMessageBox.confirm(confirmText ? confirmText(row) : '确认删除该记录?', '删除确认', {
-      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger'
-    }).then(() => true).catch(() => false) // 取消不是错误
+    const confirmed = await ElMessageBox.confirm(
+      confirmText ? confirmText(row) : '确认删除该记录?',
+      '删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      }
+    )
+      .then(() => true)
+      .catch(() => false) // 取消不是错误
     if (!confirmed) return
     deleting[row.id] = true
     try {
@@ -73,5 +86,17 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
     }
   }
 
-  return { loading, rows, dialog, formRef, form, deleting, load, openCreate, openEdit, submit, remove }
+  return {
+    loading,
+    rows,
+    dialog,
+    formRef,
+    form,
+    deleting,
+    load,
+    openCreate,
+    openEdit,
+    submit,
+    remove,
+  }
 }

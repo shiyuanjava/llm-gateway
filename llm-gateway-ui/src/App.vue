@@ -27,7 +27,7 @@ const menus = computed(() =>
 
 const current = computed(() => ({
   title: route.meta?.title || '',
-  subtitle: route.meta?.subtitle || ''
+  subtitle: route.meta?.subtitle || '',
 }))
 
 const meta = ref({ providers: [], defaultProvider: '', defaultModel: '' })
@@ -51,8 +51,12 @@ async function reloadConfig() {
   }
 }
 
-onMounted(() => { if (!isLogin.value) loadMeta() })
-watch(isLogin, (v) => { if (!v) loadMeta() })
+onMounted(() => {
+  if (!isLogin.value) loadMeta()
+})
+watch(isLogin, (v) => {
+  if (!v) loadMeta()
+})
 </script>
 
 <template>
@@ -60,7 +64,9 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   <el-container v-else class="layout">
     <el-aside width="232px" class="sidebar">
       <div class="brand">
-        <div class="brand-mark"><el-icon :size="20"><Cpu /></el-icon></div>
+        <div class="brand-mark">
+          <el-icon :size="20"><Cpu /></el-icon>
+        </div>
         <div class="brand-text">
           <div class="brand-name">LLM Gateway</div>
           <div class="brand-sub">控制台</div>
@@ -120,7 +126,9 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
 </template>
 
 <style scoped>
-.layout { height: 100vh; }
+.layout {
+  height: 100vh;
+}
 
 .sidebar {
   background: var(--app-sidebar-bg);
@@ -136,14 +144,24 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   color: #fff;
 }
 .brand-mark {
-  width: 38px; height: 38px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
-  display: grid; place-items: center;
+  display: grid;
+  place-items: center;
   background: linear-gradient(135deg, var(--el-color-primary), #8b5cf6);
   color: #fff;
 }
-.brand-name { font-weight: 700; font-size: 15px; line-height: 1.1; }
-.brand-sub { font-size: 12px; color: var(--app-sidebar-text); margin-top: 2px; }
+.brand-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.1;
+}
+.brand-sub {
+  font-size: 12px;
+  color: var(--app-sidebar-text);
+  margin-top: 2px;
+}
 
 .menu {
   flex: 1;
@@ -165,14 +183,26 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   background: var(--el-color-primary);
   color: #fff;
 }
-.menu :deep(.el-menu-item.is-active .el-icon) { color: #fff; }
+.menu :deep(.el-menu-item.is-active .el-icon) {
+  color: #fff;
+}
 
 .sidebar-foot {
   padding: 14px 20px;
-  border-top: 1px solid rgba(255, 255, 255, .08);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.foot-label { font-size: 11px; color: #7f86a3; text-transform: uppercase; letter-spacing: .04em; }
-.foot-value { font-size: 13px; color: #e6e8f2; margin-top: 4px; word-break: break-all; }
+.foot-label {
+  font-size: 11px;
+  color: #7f86a3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.foot-value {
+  font-size: 13px;
+  color: #e6e8f2;
+  margin-top: 4px;
+  word-break: break-all;
+}
 
 .header {
   height: 68px;
@@ -183,10 +213,27 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   justify-content: space-between;
   padding: 0 24px;
 }
-.header-title { font-size: 17px; font-weight: 700; }
-.header-sub { font-size: 12px; color: var(--app-text-secondary); margin-top: 2px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.user-chip { display: inline-flex; align-items: center; cursor: pointer; color: var(--app-text-secondary); font-size: 14px; }
+.header-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.header-sub {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  margin-top: 2px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--app-text-secondary);
+  font-size: 14px;
+}
 
 .main {
   background: var(--app-bg);
@@ -194,6 +241,12 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   overflow-y: auto;
 }
 
-.fade-enter-active, .fade-leave-active { transition: opacity .18s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>
