@@ -66,7 +66,6 @@ onMounted(load)
     <div class="page-header">
       <div>
         <h2 class="page-title">操作审计</h2>
-        <div class="page-subtitle">管理面登录与写操作记录(admin_audit_log 表)</div>
       </div>
     </div>
 

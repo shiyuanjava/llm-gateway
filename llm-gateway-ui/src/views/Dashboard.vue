@@ -54,9 +54,7 @@ onMounted(load)
     <div class="page-header">
       <div>
         <h2 class="page-title">概览</h2>
-        <div class="page-subtitle">
-          按租户聚合的用量与上游成本（缓存命中不计成本;数据源:request_log 表）
-        </div>
+        <div class="page-subtitle">按租户聚合的用量与上游成本（缓存命中不计成本）</div>
       </div>
       <el-button :loading="loading" @click="load">
         <el-icon><Refresh /></el-icon>&nbsp;刷新
