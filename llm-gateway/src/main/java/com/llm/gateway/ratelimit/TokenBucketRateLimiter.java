@@ -2,6 +2,7 @@ package com.llm.gateway.ratelimit;
 
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.llm.gateway.config.GatewayProperties;
@@ -14,6 +15,7 @@ import com.llm.gateway.exception.RateLimitExceededException;
  * 基于 Redis 的分布式实现——接口 {@link RateLimiter} 已为此预留。
  */
 @Component
+@ConditionalOnProperty(name = "gateway.rate-limit.store", havingValue = "memory", matchIfMissing = true)
 public class TokenBucketRateLimiter implements RateLimiter {
 
     private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
