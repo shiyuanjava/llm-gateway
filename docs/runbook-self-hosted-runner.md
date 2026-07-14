@@ -71,5 +71,14 @@
   会话不同),导致步骤秒败 exit 1。因此 workflow 用 `shell: cmd` + Git Bash 绝对路径
   `"C:\Program Files\Git\bin\bash.exe"` 显式调用,不依赖 PATH。
 - runner 的全新 checkout 没有 `.env`,部署脚本从 `~/.llm-gateway/deploy.env` 读取(见"前置")。
-- runner 日志里偶发 `BrokerServer SocketException` 退避重试,是本机代理对长轮询的干扰,
-  不影响任务派发,可忽略。
+- **服务会话不走系统代理**(WinINET 是交互会话的),直连 GitHub 会间歇性 checkout 失败、
+  Broker 长轮询 SocketException。解法:`C:\actions-runner\.env` 写入
+
+  ```
+  https_proxy=http://127.0.0.1:7890
+  http_proxy=http://127.0.0.1:7890
+  no_proxy=localhost,127.0.0.1
+  ```
+
+  然后管理员 `Restart-Service actions.runner.*`。代理端口变了要同步改这里。
+- 部署步骤输出会 tee 一份到 `C:\actions-runner\last-deploy.log`,服务模式排查先看它。
