@@ -30,6 +30,41 @@ services:
       retries: 12
     restart: unless-stopped
 
+  nacos:
+    image: nacos/nacos-server:v3.1.1
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLED: "false"
+      TZ: Asia/Shanghai
+    ports:
+      - "8848:8848"   # 控制台/HTTP API
+    volumes:
+      - nacos-data:/home/nacos/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8848/nacos/v3/client/health/readiness || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    restart: unless-stopped
+
+  # 首启把运营参数与限流规则发布到 Nacos(发布是覆盖语义,重复执行幂等)
+  nacos-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      nacos:
+        condition: service_healthy
+    volumes:
+      - ./deploy/nacos-init/init.sh:/init.sh:ro
+    entrypoint: ["sh", "/init.sh"]
+    restart: "no"
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:latest
+    ports:
+      - "8858:8858"
+    restart: unless-stopped
+
   gateway:
     build: .
     depends_on:
@@ -37,6 +72,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: prod
       MYSQL_HOST: mysql
@@ -54,6 +93,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GATEWAY_ADMIN_ALLOWED_ORIGINS: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:-}
+      NACOS_SERVER_ADDR: nacos:8848
+      SENTINEL_DASHBOARD: sentinel-dashboard:8858
+      GATEWAY_RATE_LIMIT_STORE: sentinel
       TZ: Asia/Shanghai
     # 刻意不映射 8080/9090 到宿主机:业务流量经 ui 反代,Actuator 仅容器网络内可达
     healthcheck:
@@ -76,3 +118,4 @@ services:
 
 volumes:
   mysql-data:
+  nacos-data:
