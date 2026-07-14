@@ -149,11 +149,11 @@ watch(isLogin, (v) => {
           <div class="header-sub">{{ current.subtitle }}</div>
         </div>
         <div class="header-actions">
-          <el-tag type="info" effect="plain" round>
+          <el-tag type="info" effect="plain" round class="provider-tag">
             供应商：{{ meta.providers.join(' / ') }}
           </el-tag>
           <el-button :loading="reloading" @click="reloadConfig">
-            <el-icon><Refresh /></el-icon>&nbsp;刷新配置
+            <el-icon><Refresh /></el-icon><span class="hide-sm">&nbsp;刷新配置</span>
           </el-button>
           <el-dropdown @command="logout">
             <span class="user-chip">
@@ -336,5 +336,19 @@ watch(isLogin, (v) => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 0 12px;
+  }
+  .header-sub,
+  .provider-tag,
+  .hide-sm {
+    display: none;
+  }
+  .header-actions {
+    gap: 8px;
+  }
 }
 </style>

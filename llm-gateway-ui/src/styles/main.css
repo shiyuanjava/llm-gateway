@@ -88,6 +88,14 @@ body {
   font-size: 13px;
   margin-top: 2px;
 }
+@media (max-width: 768px) {
+  .page {
+    padding: var(--space-3);
+  }
+  .page-header {
+    margin-bottom: var(--space-4);
+  }
+}
 
 /* 卡片 */
 .surface {
