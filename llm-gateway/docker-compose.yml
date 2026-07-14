@@ -35,13 +35,19 @@ services:
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLED: "false"
+      # v3 镜像启动脚本强制要求以下三项非空(即便 auth 关闭);本地单机用固定占位值
+      NACOS_AUTH_TOKEN: "SecretKey012345678901234567890123456789012345678901234567890123456789"
+      NACOS_AUTH_IDENTITY_KEY: "nacos-local"
+      NACOS_AUTH_IDENTITY_VALUE: "nacos-local"
       TZ: Asia/Shanghai
     ports:
-      - "8848:8848"   # 控制台/HTTP API
+      - "8848:8848"   # 客户端 HTTP API
+      - "8850:8080"   # v3 控制台(浏览器访问 http://localhost:8850)
     volumes:
       - nacos-data:/home/nacos/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8848/nacos/v3/client/health/readiness || exit 1"]
+      # v3 起 readiness 在控制台端口 8080,不在 8848
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v3/console/health/readiness || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 60
@@ -96,6 +102,8 @@ services:
       NACOS_SERVER_ADDR: nacos:8848
       SENTINEL_DASHBOARD: sentinel-dashboard:8858
       GATEWAY_RATE_LIMIT_STORE: sentinel
+      # nacos-client 默认往 ${user.home}/logs 写日志,非 root 用户不可写会让 Logback 初始化直接失败
+      JAVA_TOOL_OPTIONS: "-DJM.LOG.PATH=/app/logs/nacos -Dnacos.logging.default.config.enabled=false -Dcsp.sentinel.log.dir=/app/logs/sentinel"
       TZ: Asia/Shanghai
     # 刻意不映射 8080/9090 到宿主机:业务流量经 ui 反代,Actuator 仅容器网络内可达
     healthcheck:
