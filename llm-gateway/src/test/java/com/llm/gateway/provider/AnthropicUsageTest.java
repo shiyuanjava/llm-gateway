@@ -1,12 +1,12 @@
 package com.llm.gateway.provider;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import org.junit.jupiter.api.Test;
 
 import com.llm.gateway.api.dto.Usage;
 
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class AnthropicUsageTest {
 
@@ -26,10 +26,11 @@ class AnthropicUsageTest {
     @Test
     void jsonMapsSnakeCaseCacheFields() {
         // 防 @JsonProperty 拼错静默丢缓存：直接从 Anthropic 形态 JSON 反序列化验证映射
-        AnthropicResponse.AnthropicUsage usage = new ObjectMapper().readValue(
-                """
+        AnthropicResponse.AnthropicUsage usage = new ObjectMapper()
+                .readValue(
+                        """
                 {"input_tokens":10,"output_tokens":7,"cache_creation_input_tokens":5,"cache_read_input_tokens":40}""",
-                AnthropicResponse.AnthropicUsage.class);
+                        AnthropicResponse.AnthropicUsage.class);
         assertEquals(new AnthropicResponse.AnthropicUsage(10, 7, 5, 40), usage);
     }
 }

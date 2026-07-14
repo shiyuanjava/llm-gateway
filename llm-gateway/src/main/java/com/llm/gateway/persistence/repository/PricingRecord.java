@@ -12,6 +12,5 @@ package com.llm.gateway.persistence.repository;
  * @param cacheReadPer1k  缓存读每 1K Token 单价（可空）
  * @param cacheWritePer1k 缓存写每 1K Token 单价（可空）
  */
-public record PricingRecord(String model, double inputPer1k, double outputPer1k,
-                            Double cacheReadPer1k, Double cacheWritePer1k) {
-}
+public record PricingRecord(
+        String model, double inputPer1k, double outputPer1k, Double cacheReadPer1k, Double cacheWritePer1k) {}

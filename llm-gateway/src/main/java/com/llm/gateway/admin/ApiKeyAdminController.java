@@ -28,8 +28,7 @@ import com.llm.gateway.persistence.mapper.ApiKeyMapper;
 public class ApiKeyAdminController {
 
     /** 创建响应：实体信息 + 仅此一次返回的完整明文 Key。 */
-    public record ApiKeyCreatedView(ApiKeyEntity entity, String apiKey) {
-    }
+    public record ApiKeyCreatedView(ApiKeyEntity entity, String apiKey) {}
 
     private final ApiKeyMapper mapper;
     private final ConfigRefreshService refreshService;

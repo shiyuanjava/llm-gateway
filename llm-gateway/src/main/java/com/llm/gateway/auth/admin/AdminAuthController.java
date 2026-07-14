@@ -1,5 +1,9 @@
 package com.llm.gateway.auth.admin;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -9,10 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.llm.gateway.admin.web.R;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-
 /**
  * 管理端登录接口（{@code /admin/auth/**}）。login 免鉴权（过滤器放行），me 需登录。
  */
@@ -21,12 +21,10 @@ import jakarta.validation.constraints.NotBlank;
 public class AdminAuthController {
 
     /** 登录请求体。 */
-    public record LoginRequest(@NotBlank String username, @NotBlank String password) {
-    }
+    public record LoginRequest(@NotBlank String username, @NotBlank String password) {}
 
     /** 登录响应:JWT、用户名、过期时刻(epoch 毫秒,前端据此在过期后直接跳登录)。 */
-    public record LoginResponse(String token, String username, long expiresAt) {
-    }
+    public record LoginResponse(String token, String username, long expiresAt) {}
 
     private final AdminAuthService authService;
 

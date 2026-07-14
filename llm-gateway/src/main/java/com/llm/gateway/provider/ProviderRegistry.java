@@ -21,8 +21,8 @@ public class ProviderRegistry {
      * @param providerBeans 容器中所有的供应商实现
      */
     public ProviderRegistry(List<LlmProvider> providerBeans) {
-        this.providers = providerBeans.stream()
-                .collect(Collectors.toUnmodifiableMap(LlmProvider::name, Function.identity()));
+        this.providers =
+                providerBeans.stream().collect(Collectors.toUnmodifiableMap(LlmProvider::name, Function.identity()));
     }
 
     /**

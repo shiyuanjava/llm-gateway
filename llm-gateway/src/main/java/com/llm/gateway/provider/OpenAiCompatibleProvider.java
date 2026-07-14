@@ -45,8 +45,8 @@ public class OpenAiCompatibleProvider implements LlmProvider {
      * @param objectMapper Spring 配置好的 Jackson 3 ObjectMapper
      * @param http         出站 HTTP 超时配置（可为 null，用默认值）
      */
-    public OpenAiCompatibleProvider(String name, String baseUrl, String apiKey, ObjectMapper objectMapper,
-                                    GatewayProperties.Http http) {
+    public OpenAiCompatibleProvider(
+            String name, String baseUrl, String apiKey, ObjectMapper objectMapper, GatewayProperties.Http http) {
         this.name = name;
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
@@ -65,7 +65,8 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         }
         try {
             String requestBody = objectMapper.writeValueAsString(request);
-            String responseBody = restClient.post()
+            String responseBody = restClient
+                    .post()
                     .uri("/chat/completions")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -97,7 +98,8 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         }
         try {
             String requestBody = objectMapper.writeValueAsString(request.forStreamingUpstream());
-            return restClient.post()
+            return restClient
+                    .post()
                     .uri("/chat/completions")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -105,9 +107,10 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                     .body(requestBody)
                     .exchange((clientRequest, clientResponse) -> {
                         if (clientResponse.getStatusCode().isError()) {
-                            String error = new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
-                            throw new ProviderException(name + " 流式调用失败 HTTP "
-                                    + clientResponse.getStatusCode() + "：" + truncate(error));
+                            String error =
+                                    new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
+                            throw new ProviderException(
+                                    name + " 流式调用失败 HTTP " + clientResponse.getStatusCode() + "：" + truncate(error));
                         }
                         try (SseEventReader reader = new SseEventReader(clientResponse.getBody())) {
                             return readStream(reader, onChunk);

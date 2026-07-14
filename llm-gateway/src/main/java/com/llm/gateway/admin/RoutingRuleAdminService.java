@@ -30,11 +30,12 @@ public class RoutingRuleAdminService {
 
     /** @return 所有规则视图（含降级链） */
     public List<RoutingRuleView> list() {
-        Map<String, List<RoutingFallbackEntity>> fallbacksByAlias = fallbackMapper.selectList(
-                        Wrappers.<RoutingFallbackEntity>lambdaQuery().orderByAsc(RoutingFallbackEntity::getSeq))
+        Map<String, List<RoutingFallbackEntity>> fallbacksByAlias = fallbackMapper
+                .selectList(Wrappers.<RoutingFallbackEntity>lambdaQuery().orderByAsc(RoutingFallbackEntity::getSeq))
                 .stream()
                 .collect(Collectors.groupingBy(RoutingFallbackEntity::getRuleAlias));
-        return ruleMapper.selectList(Wrappers.<RoutingRuleEntity>lambdaQuery().orderByAsc(RoutingRuleEntity::getId))
+        return ruleMapper
+                .selectList(Wrappers.<RoutingRuleEntity>lambdaQuery().orderByAsc(RoutingRuleEntity::getId))
                 .stream()
                 .map(rule -> toView(rule, fallbacksByAlias.getOrDefault(rule.getAlias(), List.of())))
                 .toList();
@@ -63,8 +64,8 @@ public class RoutingRuleAdminService {
         }
 
         // 降级链整体替换：先删后插
-        fallbackMapper.delete(Wrappers.<RoutingFallbackEntity>lambdaQuery()
-                .eq(RoutingFallbackEntity::getRuleAlias, view.getAlias()));
+        fallbackMapper.delete(
+                Wrappers.<RoutingFallbackEntity>lambdaQuery().eq(RoutingFallbackEntity::getRuleAlias, view.getAlias()));
         int seq = 1;
         for (RoutingRuleView.Fallback fb : view.getFallbacks()) {
             RoutingFallbackEntity fe = new RoutingFallbackEntity();
@@ -91,8 +92,8 @@ public class RoutingRuleAdminService {
             return;
         }
         ruleMapper.deleteById(id);
-        fallbackMapper.delete(Wrappers.<RoutingFallbackEntity>lambdaQuery()
-                .eq(RoutingFallbackEntity::getRuleAlias, rule.getAlias()));
+        fallbackMapper.delete(
+                Wrappers.<RoutingFallbackEntity>lambdaQuery().eq(RoutingFallbackEntity::getRuleAlias, rule.getAlias()));
     }
 
     /**
@@ -111,13 +112,15 @@ public class RoutingRuleAdminService {
         view.setMaxPromptTokens(rule.getMaxPromptTokens());
         view.setEscalateProvider(rule.getEscalateProvider());
         view.setEscalateModel(rule.getEscalateModel());
-        view.setFallbacks(fallbacks.stream().map(f -> {
+        view.setFallbacks(fallbacks.stream()
+                .map(f -> {
                     RoutingRuleView.Fallback fb = new RoutingRuleView.Fallback();
                     fb.setSeq(f.getSeq());
                     fb.setProvider(f.getProvider());
                     fb.setModel(f.getModel());
                     return fb;
-                }).toList());
+                })
+                .toList());
         return view;
     }
 }

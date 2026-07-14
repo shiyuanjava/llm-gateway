@@ -104,8 +104,7 @@ public class GatewayContext {
     public String toLogLine(long nowNanos) {
         String base = String.format(
                 "reqId=%s tenant=%s requested=%s served=%s cacheHit=%s tokens=%d cost=$%.6f elapsedMs=%d",
-                requestId, tenant, requestedModel, servedModel, cacheHit, totalTokens, cost,
-                elapsedMillis(nowNanos));
+                requestId, tenant, requestedModel, servedModel, cacheHit, totalTokens, cost, elapsedMillis(nowNanos));
         if (streamed) {
             return base + String.format(" stream=true ttftMs=%d", firstTokenMillis);
         }

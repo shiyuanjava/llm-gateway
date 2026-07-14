@@ -71,7 +71,8 @@ public class AnthropicProvider implements LlmProvider {
         }
         try {
             String requestBody = objectMapper.writeValueAsString(toAnthropicBody(request));
-            String responseBody = restClient.post()
+            String responseBody = restClient
+                    .post()
                     .uri("/messages")
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", ANTHROPIC_VERSION)
@@ -82,8 +83,8 @@ public class AnthropicProvider implements LlmProvider {
             if (responseBody == null || responseBody.isBlank()) {
                 throw new ProviderException("Anthropic 返回空响应");
             }
-            return fromAnthropicResponse(objectMapper.readValue(responseBody, AnthropicResponse.class),
-                    request.model());
+            return fromAnthropicResponse(
+                    objectMapper.readValue(responseBody, AnthropicResponse.class), request.model());
         } catch (ProviderException e) {
             throw e;
         } catch (Exception e) {
@@ -107,7 +108,8 @@ public class AnthropicProvider implements LlmProvider {
             Map<String, Object> body = toAnthropicBody(request);
             body.put("stream", true);
             String requestBody = objectMapper.writeValueAsString(body);
-            return restClient.post()
+            return restClient
+                    .post()
                     .uri("/messages")
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", ANTHROPIC_VERSION)
@@ -116,9 +118,10 @@ public class AnthropicProvider implements LlmProvider {
                     .body(requestBody)
                     .exchange((clientRequest, clientResponse) -> {
                         if (clientResponse.getStatusCode().isError()) {
-                            String error = new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
-                            throw new ProviderException("Anthropic 流式调用失败 HTTP "
-                                    + clientResponse.getStatusCode() + "：" + truncate(error));
+                            String error =
+                                    new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
+                            throw new ProviderException(
+                                    "Anthropic 流式调用失败 HTTP " + clientResponse.getStatusCode() + "：" + truncate(error));
                         }
                         try (SseEventReader reader = new SseEventReader(clientResponse.getBody())) {
                             return readAnthropicStream(reader, request.model(), onChunk);
@@ -185,9 +188,11 @@ public class AnthropicProvider implements LlmProvider {
                     firstSent = true;
                 }
                 case "content_block_delta" -> {
-                    if (parsed.delta() != null && "text_delta".equals(parsed.delta().type())
+                    if (parsed.delta() != null
+                            && "text_delta".equals(parsed.delta().type())
                             && parsed.delta().text() != null) {
-                        onChunk.accept(ChatCompletionChunk.content(id, created, model, parsed.delta().text()));
+                        onChunk.accept(ChatCompletionChunk.content(
+                                id, created, model, parsed.delta().text()));
                     }
                 }
                 case "message_delta" -> {
@@ -214,17 +219,20 @@ public class AnthropicProvider implements LlmProvider {
                         onChunk.accept(ChatCompletionChunk.first(id, created, model)); // 缺首帧兜底
                     }
                     onChunk.accept(ChatCompletionChunk.finish(id, created, model, finishReason));
-                    return toGatewayUsage(inputTokens, cacheCreationTokens, cacheReadTokens,
-                            outputTokens == null ? 0 : outputTokens);
+                    return toGatewayUsage(
+                            inputTokens, cacheCreationTokens, cacheReadTokens, outputTokens == null ? 0 : outputTokens);
                 }
                 case "error" -> throw new ProviderException("Anthropic 流式返回错误：" + truncate(event.data()));
-                default -> { /* ping / content_block_start / content_block_stop 忽略 */ }
+                default -> {
+                    /* ping / content_block_start / content_block_stop 忽略 */
+                }
             }
         }
         if (firstSent) {
             onChunk.accept(ChatCompletionChunk.finish(id, created, model, finishReason)); // 截断兜底
         }
-        return outputTokens == null ? null
+        return outputTokens == null
+                ? null
                 : toGatewayUsage(inputTokens, cacheCreationTokens, cacheReadTokens, outputTokens);
     }
 
@@ -292,10 +300,10 @@ public class AnthropicProvider implements LlmProvider {
         }
         String id = response.id() == null ? "chatcmpl-anthropic" : response.id();
         String finishReason = mapStopReason(response.stopReason() == null ? "stop" : response.stopReason());
-        Usage usage = response.usage() == null ? Usage.of(0, 0) : response.usage().toUsage();
+        Usage usage =
+                response.usage() == null ? Usage.of(0, 0) : response.usage().toUsage();
         return ChatCompletionResponse.singleMessage(
-                id, Instant.now().getEpochSecond(), model,
-                text.toString(), finishReason, usage);
+                id, Instant.now().getEpochSecond(), model, text.toString(), finishReason, usage);
     }
 
     /**

@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-
 import javax.crypto.SecretKey;
 
 import org.slf4j.Logger;
@@ -40,8 +39,7 @@ public class AdminAuthService {
     }
 
     /** 登录结果:JWT 与过期时刻(epoch 毫秒,与 token 的 exp 一致)。 */
-    public record LoginResult(String token, long expiresAtMillis) {
-    }
+    public record LoginResult(String token, long expiresAtMillis) {}
 
     private static final Logger log = LoggerFactory.getLogger(AdminAuthService.class);
     private static final int MIN_SECRET_LENGTH = 32;
@@ -50,21 +48,21 @@ public class AdminAuthService {
 
     private final AdminUserMapper adminUserMapper;
     private final AdminAuthProperties properties;
+
     @Nullable
     private final AdminAuditService auditService;
+
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final SecretKey signingKey;
     /** username -> 失败状态（次数 + 锁定截止时间）。单实例内存即可，多实例部署由 SCA 阶段统一。 */
     private final ConcurrentHashMap<String, FailureState> failures = new ConcurrentHashMap<>();
 
-    private record FailureState(int count, long lockedUntilMs) {
-    }
+    private record FailureState(int count, long lockedUntilMs) {}
 
-    public AdminAuthService(AdminUserMapper adminUserMapper, AdminAuthProperties properties,
-                            @Nullable AdminAuditService auditService) {
+    public AdminAuthService(
+            AdminUserMapper adminUserMapper, AdminAuthProperties properties, @Nullable AdminAuditService auditService) {
         if (properties.jwtSecret() == null || properties.jwtSecret().length() < MIN_SECRET_LENGTH) {
-            throw new IllegalStateException(
-                    "GATEWAY_JWT_SECRET 未配置或长度不足 " + MIN_SECRET_LENGTH + " 字符，拒绝启动");
+            throw new IllegalStateException("GATEWAY_JWT_SECRET 未配置或长度不足 " + MIN_SECRET_LENGTH + " 字符，拒绝启动");
         }
         this.adminUserMapper = adminUserMapper;
         this.properties = properties;
@@ -92,7 +90,8 @@ public class AdminAuthService {
         }
         AdminUserEntity user = adminUserMapper.selectOne(
                 Wrappers.<AdminUserEntity>lambdaQuery().eq(AdminUserEntity::getUsername, username));
-        boolean ok = user != null && !Boolean.FALSE.equals(user.getEnabled())
+        boolean ok = user != null
+                && !Boolean.FALSE.equals(user.getEnabled())
                 && encoder.matches(password, user.getPasswordHash());
         if (!ok) {
             recordFailure(username, now);
@@ -122,8 +121,12 @@ public class AdminAuthService {
             return Optional.empty();
         }
         try {
-            String username = Jwts.parser().verifyWith(signingKey).build()
-                    .parseSignedClaims(token).getPayload().getSubject();
+            String username = Jwts.parser()
+                    .verifyWith(signingKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getSubject();
             return Optional.of(new AdminPrincipal(username));
         } catch (Exception e) {
             return Optional.empty();

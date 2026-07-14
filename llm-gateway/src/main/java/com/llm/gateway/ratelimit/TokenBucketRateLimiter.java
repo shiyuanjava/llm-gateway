@@ -35,8 +35,7 @@ public class TokenBucketRateLimiter implements RateLimiter {
     public void acquire(String tenant) {
         Bucket bucket = buckets.computeIfAbsent(tenant, t -> new Bucket(capacity, clock()));
         if (!bucket.tryConsume(refillPerMillis, capacity, clock())) {
-            throw new RateLimitExceededException(
-                    "租户 [" + tenant + "] 请求过于频繁，请稍后重试");
+            throw new RateLimitExceededException("租户 [" + tenant + "] 请求过于频繁，请稍后重试");
         }
     }
 

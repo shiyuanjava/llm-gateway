@@ -19,8 +19,7 @@ public class PromptInjectionGuardrail implements Guardrail {
             Pattern.compile("(?i)disregard\\s+(all\\s+)?(previous|prior)\\s+instructions"),
             Pattern.compile("(?i)you\\s+are\\s+now\\s+(a|an|in)\\b"),
             Pattern.compile("忽略(以上|之前|前面)(所有)?(的)?(指令|提示|要求)"),
-            Pattern.compile("(?i)developer\\s+mode")
-    );
+            Pattern.compile("(?i)developer\\s+mode"));
 
     @Override
     public String name() {

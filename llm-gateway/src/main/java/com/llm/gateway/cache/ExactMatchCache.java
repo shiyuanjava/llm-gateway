@@ -59,6 +59,5 @@ public class ExactMatchCache implements ResponseCache {
     /**
      * 缓存条目：响应 + 过期时刻。
      */
-    private record Entry(ChatCompletionResponse response, long expiresAt) {
-    }
+    private record Entry(ChatCompletionResponse response, long expiresAt) {}
 }

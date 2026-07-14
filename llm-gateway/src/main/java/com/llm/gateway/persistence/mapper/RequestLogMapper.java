@@ -6,5 +6,4 @@ import com.llm.gateway.persistence.entity.RequestLogEntity;
 /**
  * {@code request_log} 表 Mapper。
  */
-public interface RequestLogMapper extends BaseMapper<RequestLogEntity> {
-}
+public interface RequestLogMapper extends BaseMapper<RequestLogEntity> {}

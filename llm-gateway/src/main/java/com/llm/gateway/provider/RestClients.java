@@ -15,8 +15,7 @@ public final class RestClients {
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
     private static final int DEFAULT_READ_TIMEOUT_MS = 30_000;
 
-    private RestClients() {
-    }
+    private RestClients() {}
 
     /**
      * 构造带超时的 RestClient。
@@ -32,7 +31,8 @@ public final class RestClients {
      */
     public static RestClient create(String baseUrl, GatewayProperties.Http http) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofMillis(http == null ? DEFAULT_CONNECT_TIMEOUT_MS : http.connectTimeoutMs()));
+        factory.setConnectTimeout(
+                Duration.ofMillis(http == null ? DEFAULT_CONNECT_TIMEOUT_MS : http.connectTimeoutMs()));
         factory.setReadTimeout(Duration.ofMillis(http == null ? DEFAULT_READ_TIMEOUT_MS : http.readTimeoutMs()));
         return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }

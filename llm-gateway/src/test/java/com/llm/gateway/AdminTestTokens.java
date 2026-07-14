@@ -2,7 +2,6 @@ package com.llm.gateway;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
-
 import javax.crypto.SecretKey;
 
 import io.jsonwebtoken.Jwts;
@@ -16,8 +15,7 @@ public final class AdminTestTokens {
 
     public static final String TEST_SECRET = "test-secret-0123456789abcdef0123456789abcdef";
 
-    private AdminTestTokens() {
-    }
+    private AdminTestTokens() {}
 
     /** @return 有效期 60s 的合法管理端 JWT */
     public static String issue() {

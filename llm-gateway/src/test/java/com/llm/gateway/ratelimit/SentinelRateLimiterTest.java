@@ -1,8 +1,5 @@
 package com.llm.gateway.ratelimit;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -11,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import com.alibaba.csp.sentinel.slots.block.flow.param.ParamFlowRule;
 import com.alibaba.csp.sentinel.slots.block.flow.param.ParamFlowRuleManager;
 import com.llm.gateway.exception.RateLimitExceededException;
+
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * SentinelRateLimiter：内存中注册热点参数规则,验证超阈值抛 {@link RateLimitExceededException}。
@@ -34,8 +34,7 @@ class SentinelRateLimiterTest {
     void exceedingThresholdThrows429Exception() {
         loadRule(1);
         limiter.acquire("tenant-b");
-        assertThatThrownBy(() -> limiter.acquire("tenant-b"))
-                .isInstanceOf(RateLimitExceededException.class);
+        assertThatThrownBy(() -> limiter.acquire("tenant-b")).isInstanceOf(RateLimitExceededException.class);
     }
 
     @Test
@@ -46,9 +45,8 @@ class SentinelRateLimiterTest {
     }
 
     private void loadRule(double qps) {
-        ParamFlowRule rule = new ParamFlowRule(SentinelRateLimiter.RESOURCE)
-                .setParamIdx(0)
-                .setCount(qps);
+        ParamFlowRule rule =
+                new ParamFlowRule(SentinelRateLimiter.RESOURCE).setParamIdx(0).setCount(qps);
         ParamFlowRuleManager.loadRules(List.of(rule));
     }
 }

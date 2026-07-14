@@ -37,8 +37,7 @@ public class GlobalExceptionHandler {
         } else {
             log.warn("网关异常 [{}]: {}", ex.code(), ex.getMessage());
         }
-        return ResponseEntity.status(ex.status())
-                .body(ErrorResponse.of(ex.getMessage(), ex.code()));
+        return ResponseEntity.status(ex.status()).body(ErrorResponse.of(ex.getMessage(), ex.code()));
     }
 
     /**
@@ -54,8 +53,7 @@ public class GlobalExceptionHandler {
                 .reduce((a, b) -> a + "; " + b)
                 .orElse("请求参数校验失败");
         log.warn("请求校验失败: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(message, "invalid_request_error"));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of(message, "invalid_request_error"));
     }
 
     /**

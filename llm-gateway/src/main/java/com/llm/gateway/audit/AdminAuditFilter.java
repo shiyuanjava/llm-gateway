@@ -3,16 +3,16 @@ package com.llm.gateway.audit;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 
 import com.llm.gateway.auth.admin.AdminJwtFilter;
 import com.llm.gateway.auth.admin.AdminPrincipal;
-
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * 管理面写操作审计过滤器：JWT 过滤器之后执行，记录 {@code /admin/**} 的非 GET 请求
@@ -39,15 +39,14 @@ public class AdminAuditFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         // Spring Framework 7 起只提供带缓存上限的构造器（无界版本已移除）
         ContentCachingRequestWrapper wrapped = new ContentCachingRequestWrapper(request, MAX_CACHED_BODY_BYTES);
         try {
             filterChain.doFilter(wrapped, response);
         } finally {
-            AdminPrincipal principal =
-                    (AdminPrincipal) wrapped.getAttribute(AdminJwtFilter.ADMIN_PRINCIPAL_ATTRIBUTE);
+            AdminPrincipal principal = (AdminPrincipal) wrapped.getAttribute(AdminJwtFilter.ADMIN_PRINCIPAL_ATTRIBUTE);
             // 未通过鉴权的请求（401）不记审计——没有可信身份
             if (principal != null) {
                 auditService.record(
@@ -83,8 +82,7 @@ public class AdminAuditFilter extends OncePerRequestFilter {
         if (body == null || body.isBlank()) {
             return null;
         }
-        return body
-                .replaceAll("(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2")
+        return body.replaceAll("(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2")
                 .replaceAll("(\"apiKey\"\\s*:\\s*\"sk-[^\"]{4})[^\"]*(\")", "$1***$2");
     }
 }

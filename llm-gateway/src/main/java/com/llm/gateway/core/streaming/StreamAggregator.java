@@ -49,7 +49,8 @@ public class StreamAggregator {
         if (chunk.created() > 0) {
             created = chunk.created();
         }
-        if (chunk.choices() != null && !chunk.choices().isEmpty()
+        if (chunk.choices() != null
+                && !chunk.choices().isEmpty()
                 && chunk.choices().get(0).finishReason() != null) {
             finishReason = chunk.choices().get(0).finishReason();
         }

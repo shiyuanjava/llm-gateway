@@ -1,12 +1,5 @@
 package com.llm.gateway.api;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -24,9 +17,14 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.llm.gateway.auth.ApiKeyService;
 
-@SpringBootTest(properties = {
-        "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef"
-})
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest(properties = {"gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef"})
 @AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ChatCompletionStreamIntegrationTest {
@@ -36,17 +34,23 @@ class ChatCompletionStreamIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
     @Autowired
     private ApiKeyService apiKeyService;
 
     @BeforeAll
     void insertTestKey() {
-        jdbcTemplate.update("""
+        jdbcTemplate.update(
+                """
                 INSERT IGNORE INTO api_key (key_hash, key_prefix, tenant, roles, allowed_models, enabled)
                 VALUES (SHA2(?, 256), ?, ?, 'user', '*', 1)
-                """, TEST_KEY, TEST_KEY.substring(0, 12), TENANT);
+                """,
+                TEST_KEY,
+                TEST_KEY.substring(0, 12),
+                TENANT);
         apiKeyService.reload();
     }
 
@@ -59,8 +63,8 @@ class ChatCompletionStreamIntegrationTest {
 
     /** 每次用唯一 content 保证缓存不干扰(除专测缓存的用例)。 */
     private String body(String model, String content, String extra) {
-        return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\""
-                + content + "\"}],\"stream\":true" + extra + "}";
+        return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"" + content
+                + "\"}],\"stream\":true" + extra + "}";
     }
 
     private String postSse(String json) throws Exception {
@@ -70,7 +74,8 @@ class ChatCompletionStreamIntegrationTest {
                         .content(json))
                 .andExpect(status().isOk())
                 .andReturn();
-        assertTrue(result.getResponse().getContentType().startsWith("text/event-stream"),
+        assertTrue(
+                result.getResponse().getContentType().startsWith("text/event-stream"),
                 "应为 SSE,实际: " + result.getResponse().getContentType());
         return result.getResponse().getContentAsString(StandardCharsets.UTF_8);
     }
@@ -86,8 +91,8 @@ class ChatCompletionStreamIntegrationTest {
 
     @Test
     void includeUsageEmitsUsageChunkBeforeDone() throws Exception {
-        String sse = postSse(body("mock-stream-it", "usage-" + UUID.randomUUID(),
-                ",\"stream_options\":{\"include_usage\":true}"));
+        String sse = postSse(
+                body("mock-stream-it", "usage-" + UUID.randomUUID(), ",\"stream_options\":{\"include_usage\":true}"));
         int usagePos = sse.indexOf("\"prompt_tokens\"");
         int donePos = sse.indexOf("data: [DONE]");
         assertTrue(usagePos > 0, "应有 usage 帧");
@@ -100,8 +105,7 @@ class ChatCompletionStreamIntegrationTest {
         postSse(json);
         postSse(json);
         String status = jdbcTemplate.queryForObject(
-                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1",
-                String.class, TENANT);
+                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1", String.class, TENANT);
         assertEquals("cache_hit", status, "第二次同请求应命中缓存回放");
     }
 
@@ -113,8 +117,7 @@ class ChatCompletionStreamIntegrationTest {
         assertFalse(sse.contains("data: [DONE]"), "截断的流不应有 [DONE]");
         assertFalse(sse.contains("不应到达客户端"), "敏感词所在帧及之后内容不得写出");
         String status = jdbcTemplate.queryForObject(
-                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1",
-                String.class, TENANT);
+                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1", String.class, TENANT);
         assertEquals("guardrail_truncated", status);
     }
 

@@ -2,10 +2,10 @@ package com.llm.gateway.api.dto;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * 进入网关的统一请求体，兼容 OpenAI Chat Completions 协议。

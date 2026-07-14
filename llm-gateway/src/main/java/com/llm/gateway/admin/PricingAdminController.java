@@ -35,7 +35,8 @@ public class PricingAdminController {
     /** @return 全部计费单价 */
     @GetMapping
     public R<List<ModelPricingEntity>> list() {
-        return R.ok(mapper.selectList(Wrappers.<ModelPricingEntity>lambdaQuery().orderByAsc(ModelPricingEntity::getId)));
+        return R.ok(
+                mapper.selectList(Wrappers.<ModelPricingEntity>lambdaQuery().orderByAsc(ModelPricingEntity::getId)));
     }
 
     /**
@@ -64,13 +65,15 @@ public class PricingAdminController {
     @PutMapping("/{id}")
     public R<ModelPricingEntity> update(@PathVariable Long id, @RequestBody ModelPricingEntity entity) {
         entity.setId(id);
-        mapper.update(null, Wrappers.<ModelPricingEntity>update()
-                .eq("id", id)
-                .set("model", entity.getModel())
-                .set("input_per_1k", entity.getInputPer1k())
-                .set("output_per_1k", entity.getOutputPer1k())
-                .set("cache_read_per_1k", entity.getCacheReadPer1k())
-                .set("cache_write_per_1k", entity.getCacheWritePer1k()));
+        mapper.update(
+                null,
+                Wrappers.<ModelPricingEntity>update()
+                        .eq("id", id)
+                        .set("model", entity.getModel())
+                        .set("input_per_1k", entity.getInputPer1k())
+                        .set("output_per_1k", entity.getOutputPer1k())
+                        .set("cache_read_per_1k", entity.getCacheReadPer1k())
+                        .set("cache_write_per_1k", entity.getCacheWritePer1k()));
         refreshService.reloadAll();
         return R.ok(entity);
     }

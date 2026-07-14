@@ -109,6 +109,5 @@ public class SemanticCache {
     /**
      * 语义缓存条目。
      */
-    private record Entry(float[] embedding, ChatCompletionResponse response, long expiresAt) {
-    }
+    private record Entry(float[] embedding, ChatCompletionResponse response, long expiresAt) {}
 }

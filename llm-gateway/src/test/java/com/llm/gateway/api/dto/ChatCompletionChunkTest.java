@@ -1,12 +1,12 @@
 package com.llm.gateway.api.dto;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
 
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatCompletionChunkTest {
 
@@ -14,8 +14,7 @@ class ChatCompletionChunkTest {
 
     @Test
     void contentChunkSerializesDeltaContentOnly() {
-        String json = mapper.writeValueAsString(
-                ChatCompletionChunk.content("c1", 100, "m1", "你好"));
+        String json = mapper.writeValueAsString(ChatCompletionChunk.content("c1", 100, "m1", "你好"));
         assertTrue(json.contains("\"object\":\"chat.completion.chunk\""));
         assertTrue(json.contains("\"delta\":{\"content\":\"你好\"}"));
         assertFalse(json.contains("usage"), "内容帧不应含 usage");
@@ -24,16 +23,14 @@ class ChatCompletionChunkTest {
 
     @Test
     void finishChunkSerializesEmptyDelta() {
-        String json = mapper.writeValueAsString(
-                ChatCompletionChunk.finish("c1", 100, "m1", "stop"));
+        String json = mapper.writeValueAsString(ChatCompletionChunk.finish("c1", 100, "m1", "stop"));
         assertTrue(json.contains("\"delta\":{}"));
         assertTrue(json.contains("\"finish_reason\":\"stop\""));
     }
 
     @Test
     void usageChunkHasEmptyChoices() {
-        String json = mapper.writeValueAsString(
-                ChatCompletionChunk.usageOnly("c1", 100, "m1", Usage.of(3, 5)));
+        String json = mapper.writeValueAsString(ChatCompletionChunk.usageOnly("c1", 100, "m1", Usage.of(3, 5)));
         assertTrue(json.contains("\"choices\":[]"));
         assertTrue(json.contains("\"total_tokens\":8"));
     }
@@ -42,7 +39,8 @@ class ChatCompletionChunkTest {
     void deltaContentExtractsTextSafely() {
         assertEquals("hi", ChatCompletionChunk.content("c", 1, "m", "hi").deltaContent());
         assertEquals("", ChatCompletionChunk.finish("c", 1, "m", "stop").deltaContent());
-        assertEquals("", ChatCompletionChunk.usageOnly("c", 1, "m", Usage.of(1, 1)).deltaContent());
+        assertEquals(
+                "", ChatCompletionChunk.usageOnly("c", 1, "m", Usage.of(1, 1)).deltaContent());
     }
 
     @Test

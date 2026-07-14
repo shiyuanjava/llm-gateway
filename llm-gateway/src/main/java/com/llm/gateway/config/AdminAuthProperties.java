@@ -12,8 +12,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "gateway.admin")
 public record AdminAuthProperties(
-        String jwtSecret,
-        long tokenTtlMinutes,
-        String bootstrapUsername,
-        String bootstrapPassword) {
-}
+        String jwtSecret, long tokenTtlMinutes, String bootstrapUsername, String bootstrapPassword) {}

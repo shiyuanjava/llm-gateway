@@ -25,8 +25,7 @@ public class QuotaService {
     /**
      * 单租户用量缓存：DB 快照 + 快照后的本地增量。
      */
-    private record CachedUsage(long loadedAtMs, AtomicLong tokens) {
-    }
+    private record CachedUsage(long loadedAtMs, AtomicLong tokens) {}
 
     /**
      * @param requestLogRepository 请求日志仓储（聚合用量）
@@ -44,8 +43,7 @@ public class QuotaService {
      */
     public void checkQuota(String tenant) {
         if (consumedTokens(tenant) >= limitPerTenant) {
-            throw new QuotaExceededException(
-                    "租户 [" + tenant + "] 的 Token 配额已用尽（上限 " + limitPerTenant + "）");
+            throw new QuotaExceededException("租户 [" + tenant + "] 的 Token 配额已用尽（上限 " + limitPerTenant + "）");
         }
     }
 

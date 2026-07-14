@@ -63,8 +63,7 @@ public class ApiKeyService implements ConfigReloadable {
      */
     public void authorize(Principal principal, String model) {
         if (!principal.canAccess(model)) {
-            throw new AuthorizationException(
-                    "租户 [" + principal.tenant() + "] 无权访问模型 [" + model + "]");
+            throw new AuthorizationException("租户 [" + principal.tenant() + "] 无权访问模型 [" + model + "]");
         }
     }
 }

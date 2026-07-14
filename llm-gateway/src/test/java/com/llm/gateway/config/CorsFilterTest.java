@@ -1,25 +1,26 @@
 package com.llm.gateway.config;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 /**
  * CORS 收敛与 401 CORS 头:CorsFilter 注册在鉴权过滤器之前,
  * 未登录 401(过滤器直写响应)也必须带 Access-Control-Allow-Origin,预检不需要登录。
  */
-@SpringBootTest(properties = {
-        "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-        "gateway.admin.allowed-origins=http://localhost:5173"
-})
+@SpringBootTest(
+        properties = {
+            "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
+            "gateway.admin.allowed-origins=http://localhost:5173"
+        })
 @AutoConfigureMockMvc
 class CorsFilterTest {
 

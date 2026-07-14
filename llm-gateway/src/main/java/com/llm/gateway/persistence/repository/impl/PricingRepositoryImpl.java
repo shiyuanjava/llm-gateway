@@ -23,7 +23,8 @@ public class PricingRepositoryImpl implements PricingRepository {
     @Override
     public List<PricingRecord> findAll() {
         return mapper.selectList(null).stream()
-                .map(e -> new PricingRecord(e.getModel(),
+                .map(e -> new PricingRecord(
+                        e.getModel(),
                         e.getInputPer1k() == null ? 0.0 : e.getInputPer1k(),
                         e.getOutputPer1k() == null ? 0.0 : e.getOutputPer1k(),
                         e.getCacheReadPer1k(),

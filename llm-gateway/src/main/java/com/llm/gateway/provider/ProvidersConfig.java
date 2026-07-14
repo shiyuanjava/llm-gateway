@@ -50,14 +50,15 @@ public class ProvidersConfig {
      * @param defaultBaseUrl 缺省 base-url
      * @return 供应商
      */
-    private LlmProvider build(GatewayProperties properties, ObjectMapper objectMapper,
-                             String name, String defaultBaseUrl) {
+    private LlmProvider build(
+            GatewayProperties properties, ObjectMapper objectMapper, String name, String defaultBaseUrl) {
         GatewayProperties.ProviderConfig config =
                 properties.providers() == null ? null : properties.providers().get(name);
-        String baseUrl = config == null || config.baseUrl() == null || config.baseUrl().isBlank()
-                ? defaultBaseUrl : config.baseUrl();
+        String baseUrl =
+                config == null || config.baseUrl() == null || config.baseUrl().isBlank()
+                        ? defaultBaseUrl
+                        : config.baseUrl();
         String apiKey = config == null ? null : config.apiKey();
         return new OpenAiCompatibleProvider(name, baseUrl, apiKey, objectMapper, properties.http());
     }
 }
-

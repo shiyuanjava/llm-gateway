@@ -1,17 +1,10 @@
 package com.llm.gateway.core;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,8 +30,16 @@ import com.llm.gateway.resilience.ResilientExecutor;
 import com.llm.gateway.router.ModelRouter;
 import com.llm.gateway.router.RouteDecision;
 
-import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 缓存回放中断(客户端断开)的审计:served_model 取缓存响应模型、cache_hit=true、
@@ -52,11 +53,18 @@ class GatewayServiceCacheReplayTest {
         QuotaService quotaService = mock(QuotaService.class);
         RequestLogRepository requestLogRepository = mock(RequestLogRepository.class);
         GatewayService service = new GatewayService(
-                mock(ApiKeyService.class), mock(RateLimiter.class), quotaService,
-                mock(GuardrailEngine.class), cacheService, mock(ModelRouter.class),
-                mock(ResilientExecutor.class), mock(ProviderRegistry.class),
-                mock(CostCalculator.class), mock(MetricsRecorder.class),
-                requestLogRepository, new ObjectMapper());
+                mock(ApiKeyService.class),
+                mock(RateLimiter.class),
+                quotaService,
+                mock(GuardrailEngine.class),
+                cacheService,
+                mock(ModelRouter.class),
+                mock(ResilientExecutor.class),
+                mock(ProviderRegistry.class),
+                mock(CostCalculator.class),
+                mock(MetricsRecorder.class),
+                requestLogRepository,
+                new ObjectMapper());
 
         ChatCompletionResponse cached = new ChatCompletionResponse(
                 "chatcmpl-x", "chat.completion", 1L, "mock-served-model", null, Usage.of(1, 2));
@@ -90,25 +98,31 @@ class GatewayServiceCacheReplayTest {
         ResilientExecutor resilientExecutor = mock(ResilientExecutor.class);
         RequestLogRepository requestLogRepository = mock(RequestLogRepository.class);
         GatewayService service = new GatewayService(
-                mock(ApiKeyService.class), mock(RateLimiter.class), quotaService,
-                mock(GuardrailEngine.class), cacheService, router,
-                resilientExecutor, mock(ProviderRegistry.class),
-                mock(CostCalculator.class), mock(MetricsRecorder.class),
-                requestLogRepository, new ObjectMapper());
+                mock(ApiKeyService.class),
+                mock(RateLimiter.class),
+                quotaService,
+                mock(GuardrailEngine.class),
+                cacheService,
+                router,
+                resilientExecutor,
+                mock(ProviderRegistry.class),
+                mock(CostCalculator.class),
+                mock(MetricsRecorder.class),
+                requestLogRepository,
+                new ObjectMapper());
 
         when(cacheService.lookup(any())).thenReturn(Optional.empty());
         // RouteDecision.chain() 恒含 primary(真实 record 无法构造空链);costCalculator 为 mock,
         // requirePricing 是 no-op,单目标真实对象即可
-        when(router.route(any())).thenReturn(
-                new RouteDecision(new ProviderTarget("mock", "mock-model"), List.of()));
+        when(router.route(any())).thenReturn(new RouteDecision(new ProviderTarget("mock", "mock-model"), List.of()));
         // 首帧未写出前上游即报客户端断开
         when(resilientExecutor.executeStream(any(), any(), any()))
                 .thenThrow(new ClientDisconnectedException("客户端已断开：broken pipe", new IOException("broken pipe")));
 
         ChatCompletionRequest request = new ChatCompletionRequest(
                 "my-alias", List.of(new ChatMessage("user", "hi")), null, null, null, true, null);
-        service.completeStream(request, new Principal("it-tenant", List.of("user"), List.of("*")),
-                mock(HttpServletResponse.class));
+        service.completeStream(
+                request, new Principal("it-tenant", List.of("user"), List.of("*")), mock(HttpServletResponse.class));
 
         ArgumentCaptor<RequestLogRecord> captor = ArgumentCaptor.forClass(RequestLogRecord.class);
         verify(requestLogRepository).save(captor.capture());

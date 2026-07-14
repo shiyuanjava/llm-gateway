@@ -1,12 +1,12 @@
 package com.llm.gateway.api.dto;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
 
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UsageTest {
 
@@ -23,7 +23,8 @@ class UsageTest {
 
     @Test
     void deserializesOpenAiCachedTokensDetails() {
-        String json = """
+        String json =
+                """
                 {"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,
                  "prompt_tokens_details":{"cached_tokens":30,"audio_tokens":0}}""";
         Usage usage = mapper.readValue(json, Usage.class);
@@ -34,8 +35,7 @@ class UsageTest {
 
     @Test
     void toleratesMissingDetails() {
-        Usage usage = mapper.readValue(
-                "{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}", Usage.class);
+        Usage usage = mapper.readValue("{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}", Usage.class);
         assertEquals(0, usage.cacheReadTokens());
         assertEquals(Usage.of(7, 2), usage);
     }
@@ -49,8 +49,7 @@ class UsageTest {
     @Test
     void fallsBackToSumWhenTotalTokensMissing() {
         // 部分兼容网关的 usage 帧不带 total_tokens,不能因此打挂整条流:回退 p+c
-        Usage usage = mapper.readValue(
-                "{\"prompt_tokens\":7,\"completion_tokens\":2}", Usage.class);
+        Usage usage = mapper.readValue("{\"prompt_tokens\":7,\"completion_tokens\":2}", Usage.class);
         assertEquals(9, usage.totalTokens());
         assertEquals(Usage.of(7, 2), usage);
     }
@@ -58,8 +57,8 @@ class UsageTest {
     @Test
     void keepsUpstreamTotalEvenWhenInconsistent() {
         // 补缺不是重算:上游给了 total 就原样保留,哪怕与 p+c 不一致(如含推理 token 的口径)
-        Usage usage = mapper.readValue(
-                "{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":999}", Usage.class);
+        Usage usage =
+                mapper.readValue("{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":999}", Usage.class);
         assertEquals(999, usage.totalTokens());
     }
 
@@ -68,7 +67,8 @@ class UsageTest {
         Usage usage = mapper.readValue(
                 """
                 {"prompt_tokens":7,"completion_tokens":2,"total_tokens":9,
-                 "prompt_tokens_details":{"cached_tokens":null}}""", Usage.class);
+                 "prompt_tokens_details":{"cached_tokens":null}}""",
+                Usage.class);
         assertEquals(0, usage.cacheReadTokens());
     }
 

@@ -31,8 +31,7 @@ public class CostCalculator implements ConfigReloadable {
     private static final Logger log = LoggerFactory.getLogger(CostCalculator.class);
 
     /** 定价快照：精确 map + 按前缀长度降序的通配列表，整体一次发布，reload 期间读方无中间态。 */
-    private record PricingSnapshot(Map<String, PricingRecord> exact, List<PricingRecord> wildcards) {
-    }
+    private record PricingSnapshot(Map<String, PricingRecord> exact, List<PricingRecord> wildcards) {}
 
     private final PricingRepository pricingRepository;
     private volatile PricingSnapshot snapshot;
@@ -57,7 +56,8 @@ public class CostCalculator implements ConfigReloadable {
             }
         }
         // 更长的通配前缀更具体，优先匹配（mock-d* 先于 mock*）
-        wildcardList.sort(Comparator.comparingInt((PricingRecord r) -> r.model().length()).reversed());
+        wildcardList.sort(
+                Comparator.comparingInt((PricingRecord r) -> r.model().length()).reversed());
         if (wildcardList.stream().anyMatch(r -> "*".equals(r.model()))) {
             log.warn("定价表存在裸 '*' 全局兜底行：任何模型都能解析到定价，fail-close 预检实际失效");
         }

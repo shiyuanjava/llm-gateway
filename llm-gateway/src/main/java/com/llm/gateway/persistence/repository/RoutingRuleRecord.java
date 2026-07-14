@@ -13,6 +13,9 @@ import com.llm.gateway.provider.ProviderTarget;
  * @param maxPromptTokens 升级阈值（可空）
  * @param escalateTo      升级目标（可空）
  */
-public record RoutingRuleRecord(String alias, ProviderTarget primary, List<ProviderTarget> fallbacks,
-                                Integer maxPromptTokens, ProviderTarget escalateTo) {
-}
+public record RoutingRuleRecord(
+        String alias,
+        ProviderTarget primary,
+        List<ProviderTarget> fallbacks,
+        Integer maxPromptTokens,
+        ProviderTarget escalateTo) {}

@@ -32,7 +32,8 @@ public class MetricsRecorder {
      * @param model  请求的模型/别名
      */
     public void incRequest(String tenant, String model) {
-        registry.counter("llm.gateway.requests", "tenant", tenant, "model", model).increment();
+        registry.counter("llm.gateway.requests", "tenant", tenant, "model", model)
+                .increment();
     }
 
     /** 记录一次缓存命中。 */

@@ -13,12 +13,7 @@ import java.util.List;
  * @param usage   Token 用量
  */
 public record ChatCompletionResponse(
-        String id,
-        String object,
-        long created,
-        String model,
-        List<Choice> choices,
-        Usage usage) {
+        String id, String object, long created, String model, List<Choice> choices, Usage usage) {
 
     /**
      * 便捷构造一个只含单条 assistant 回复的响应。
@@ -31,8 +26,8 @@ public record ChatCompletionResponse(
      * @param usage        Token 用量
      * @return 响应对象
      */
-    public static ChatCompletionResponse singleMessage(String id, long createdEpoch, String model,
-                                                       String content, String finishReason, Usage usage) {
+    public static ChatCompletionResponse singleMessage(
+            String id, long createdEpoch, String model, String content, String finishReason, Usage usage) {
         Choice choice = new Choice(0, ChatMessage.assistant(content), finishReason);
         return new ChatCompletionResponse(id, "chat.completion", createdEpoch, model, List.of(choice), usage);
     }

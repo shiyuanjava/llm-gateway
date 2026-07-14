@@ -29,8 +29,7 @@ public record AnthropicResponse(
      * @param type 类型（如 {@code text}）
      * @param text 文本
      */
-    public record ContentBlock(String type, String text) {
-    }
+    public record ContentBlock(String type, String text) {}
 
     /**
      * 用量。Anthropic 口径：{@code input_tokens} <strong>不含</strong>缓存，

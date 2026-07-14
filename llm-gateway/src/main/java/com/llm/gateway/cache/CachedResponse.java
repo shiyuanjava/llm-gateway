@@ -13,10 +13,7 @@ import com.llm.gateway.api.dto.Usage;
  * @param cacheReadTokens     从 usage 摘出的缓存读拆分
  * @param cacheCreationTokens 从 usage 摘出的缓存写拆分
  */
-public record CachedResponse(
-        ChatCompletionResponse response,
-        int cacheReadTokens,
-        int cacheCreationTokens) {
+public record CachedResponse(ChatCompletionResponse response, int cacheReadTokens, int cacheCreationTokens) {
 
     /**
      * 包装响应，摘出 Usage 拆分。
@@ -26,9 +23,8 @@ public record CachedResponse(
      */
     public static CachedResponse of(ChatCompletionResponse response) {
         Usage usage = response.usage();
-        return new CachedResponse(response,
-                usage == null ? 0 : usage.cacheReadTokens(),
-                usage == null ? 0 : usage.cacheCreationTokens());
+        return new CachedResponse(
+                response, usage == null ? 0 : usage.cacheReadTokens(), usage == null ? 0 : usage.cacheCreationTokens());
     }
 
     /**
@@ -41,9 +37,13 @@ public record CachedResponse(
         if (usage == null || (cacheReadTokens == 0 && cacheCreationTokens == 0)) {
             return response;
         }
-        Usage rebuilt = new Usage(usage.promptTokens(), usage.completionTokens(), usage.totalTokens(),
-                cacheReadTokens, cacheCreationTokens);
-        return new ChatCompletionResponse(response.id(), response.object(), response.created(),
-                response.model(), response.choices(), rebuilt);
+        Usage rebuilt = new Usage(
+                usage.promptTokens(),
+                usage.completionTokens(),
+                usage.totalTokens(),
+                cacheReadTokens,
+                cacheCreationTokens);
+        return new ChatCompletionResponse(
+                response.id(), response.object(), response.created(), response.model(), response.choices(), rebuilt);
     }
 }

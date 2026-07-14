@@ -1,8 +1,5 @@
 package com.llm.gateway.router;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -14,18 +11,25 @@ import com.llm.gateway.persistence.repository.RoutingRuleRecord;
 import com.llm.gateway.persistence.repository.RoutingRuleRepository;
 import com.llm.gateway.provider.ProviderTarget;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 class RuleBasedRouterTest {
 
     /** 内存假仓储：返回与 seed.sql 类似的两条规则。 */
     private final RoutingRuleRepository repository = () -> List.of(
-            new RoutingRuleRecord("auto",
+            new RoutingRuleRecord(
+                    "auto",
                     new ProviderTarget("mock", "mock-small"),
                     List.of(new ProviderTarget("openai", "gpt-4o-mini")),
-                    50, new ProviderTarget("anthropic", "claude-opus-4-8")),
-            new RoutingRuleRecord("smart",
+                    50,
+                    new ProviderTarget("anthropic", "claude-opus-4-8")),
+            new RoutingRuleRecord(
+                    "smart",
                     new ProviderTarget("anthropic", "claude-opus-4-8"),
                     List.of(new ProviderTarget("openai", "gpt-4o")),
-                    null, null));
+                    null,
+                    null));
 
     private final RuleBasedRouter router = new RuleBasedRouter(repository, Fixtures.properties());
 
@@ -55,17 +59,21 @@ class RuleBasedRouterTest {
 
     @Test
     void shouldRoutePhysicalModelByPrefix() {
-        assertEquals(new ProviderTarget("deepseek", "deepseek-v4-pro"),
+        assertEquals(
+                new ProviderTarget("deepseek", "deepseek-v4-pro"),
                 router.route(request("deepseek-v4-pro", "hi")).primary());
-        assertEquals(new ProviderTarget("openai", "gpt-4o"),
+        assertEquals(
+                new ProviderTarget("openai", "gpt-4o"),
                 router.route(request("gpt-4o", "hi")).primary());
-        assertEquals(new ProviderTarget("anthropic", "claude-haiku-4-5"),
+        assertEquals(
+                new ProviderTarget("anthropic", "claude-haiku-4-5"),
                 router.route(request("claude-haiku-4-5", "hi")).primary());
     }
 
     @Test
     void shouldFallBackToDefaultModelWhenUnknown() {
-        assertEquals(new ProviderTarget("deepseek", "deepseek-v4-pro"),
+        assertEquals(
+                new ProviderTarget("deepseek", "deepseek-v4-pro"),
                 router.route(request("totally-unknown", "hi")).primary());
     }
 

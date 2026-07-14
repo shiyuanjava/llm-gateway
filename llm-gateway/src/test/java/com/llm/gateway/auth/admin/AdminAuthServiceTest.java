@@ -1,11 +1,5 @@
 package com.llm.gateway.auth.admin;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +10,12 @@ import com.llm.gateway.config.AdminAuthProperties;
 import com.llm.gateway.exception.AuthenticationException;
 import com.llm.gateway.persistence.entity.AdminUserEntity;
 import com.llm.gateway.persistence.mapper.AdminUserMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class AdminAuthServiceTest {
 
@@ -34,8 +34,7 @@ class AdminAuthServiceTest {
         user.setEnabled(true);
         when(mapper.selectOne(any())).thenReturn(user);
         when(mapper.selectCount(any())).thenReturn(1L);
-        service = new AdminAuthService(mapper,
-                new AdminAuthProperties(SECRET, 120, "", ""), null);
+        service = new AdminAuthService(mapper, new AdminAuthProperties(SECRET, 120, "", ""), null);
     }
 
     @Test
@@ -75,8 +74,7 @@ class AdminAuthServiceTest {
 
     @Test
     void shortSecretFailsFast() {
-        assertThatThrownBy(() -> new AdminAuthService(mapper,
-                new AdminAuthProperties("short", 120, "", ""), null))
+        assertThatThrownBy(() -> new AdminAuthService(mapper, new AdminAuthProperties("short", 120, "", ""), null))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

@@ -78,8 +78,7 @@ public class ResilientExecutor {
                 }
             }
         }
-        throw new NoProviderAvailableException(
-                "路由链上所有目标均不可用：" + decision.chain(), lastError);
+        throw new NoProviderAvailableException("路由链上所有目标均不可用：" + decision.chain(), lastError);
     }
 
     /**
@@ -122,7 +121,8 @@ public class ResilientExecutor {
                     if (streamStarted.getAsBoolean()) {
                         // 首帧已写给客户端：无法换目标重放，只能断流
                         log.warn("目标 {} 在首帧写出后流式调用失败，无法降级，直接断流：{}", target, e.getMessage());
-                        throw e instanceof ProviderException pe ? pe
+                        throw e instanceof ProviderException pe
+                                ? pe
                                 : new ProviderException("目标 " + target + " 流式输出已开始后上游失败：" + e.getMessage(), e);
                     }
                     log.warn("目标 {} 流式调用失败（第 {} 次尝试）：{}", target, attempt + 1, e.getMessage());
@@ -132,8 +132,7 @@ public class ResilientExecutor {
                 }
             }
         }
-        throw new NoProviderAvailableException(
-                "路由链上所有目标均不可用：" + decision.chain(), lastError);
+        throw new NoProviderAvailableException("路由链上所有目标均不可用：" + decision.chain(), lastError);
     }
 
     /**

@@ -1,25 +1,26 @@
 package com.llm.gateway.config;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 /**
  * 白名单为空(生产同源部署默认)时的行为契约:普通请求原样走过滤器链(同源不受影响),
  * 跨域预检拿不到任何允许头(Spring 7 下为空 200 终止) —— 钉死「空白名单 = 零跨域」语义。
  */
-@SpringBootTest(properties = {
-        "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-        "gateway.admin.allowed-origins="
-})
+@SpringBootTest(
+        properties = {
+            "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
+            "gateway.admin.allowed-origins="
+        })
 @AutoConfigureMockMvc
 class CorsFilterEmptyWhitelistTest {
 

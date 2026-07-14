@@ -11,5 +11,4 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * @param finishReason 结束原因,仅结束帧非空
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record DeltaChoice(int index, ChatMessage delta, @JsonProperty("finish_reason") String finishReason) {
-}
+public record DeltaChoice(int index, ChatMessage delta, @JsonProperty("finish_reason") String finishReason) {}

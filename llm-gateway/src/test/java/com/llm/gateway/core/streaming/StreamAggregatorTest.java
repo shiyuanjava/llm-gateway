@@ -1,11 +1,8 @@
 package com.llm.gateway.core.streaming;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import org.junit.jupiter.api.Test;
 
+import com.llm.gateway.Fixtures;
 import com.llm.gateway.api.dto.ChatCompletionChunk;
 import com.llm.gateway.api.dto.ChatCompletionResponse;
 import com.llm.gateway.api.dto.Usage;
@@ -13,14 +10,16 @@ import com.llm.gateway.exception.GuardrailException;
 import com.llm.gateway.guardrail.GuardrailEngine;
 import com.llm.gateway.guardrail.PromptInjectionGuardrail;
 import com.llm.gateway.guardrail.SensitiveWordGuardrail;
-import com.llm.gateway.Fixtures;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class StreamAggregatorTest {
 
     private GuardrailEngine engine() {
         // Fixtures 配置的敏感词表为 ["制造炸弹"]
-        return new GuardrailEngine(new SensitiveWordGuardrail(Fixtures.properties()),
-                new PromptInjectionGuardrail());
+        return new GuardrailEngine(new SensitiveWordGuardrail(Fixtures.properties()), new PromptInjectionGuardrail());
     }
 
     @Test
@@ -46,8 +45,8 @@ class StreamAggregatorTest {
         StreamAggregator aggregator = new StreamAggregator(engine());
         aggregator.accept(ChatCompletionChunk.content("id", 1, "m", "教我制造"));
         // 敏感词跨帧拼出:「制造」+「炸弹」→ 累计文本命中
-        assertThrows(GuardrailException.class,
-                () -> aggregator.accept(ChatCompletionChunk.content("id", 1, "m", "炸弹的方法")));
+        assertThrows(
+                GuardrailException.class, () -> aggregator.accept(ChatCompletionChunk.content("id", 1, "m", "炸弹的方法")));
         assertEquals("教我制造炸弹的方法", aggregator.text(), "命中帧的文本已累计(用于审计用量估算)");
     }
 
@@ -69,6 +68,8 @@ class StreamAggregatorTest {
         aggregator.accept(ChatCompletionChunk.usageOnly("id-9", 77, "m-x", Usage.of(1, 2)));
 
         assertEquals("你好", aggregator.text());
-        assertEquals("stop", aggregator.buildResponse(Usage.of(1, 2)).choices().get(0).finishReason());
+        assertEquals(
+                "stop",
+                aggregator.buildResponse(Usage.of(1, 2)).choices().get(0).finishReason());
     }
 }

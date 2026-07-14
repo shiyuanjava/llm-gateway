@@ -6,5 +6,4 @@ import com.llm.gateway.persistence.entity.AdminUserEntity;
 /**
  * {@code admin_user} 表 Mapper。继承 {@link BaseMapper} 即获得增删改查能力。
  */
-public interface AdminUserMapper extends BaseMapper<AdminUserEntity> {
-}
+public interface AdminUserMapper extends BaseMapper<AdminUserEntity> {}

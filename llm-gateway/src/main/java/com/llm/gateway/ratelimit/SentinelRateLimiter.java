@@ -28,8 +28,7 @@ public class SentinelRateLimiter implements RateLimiter {
         try (Entry ignored = SphU.entry(RESOURCE, EntryType.IN, 1, tenant)) {
             // 进入即放行；try-with-resources 保证 exit,统计窗口正确
         } catch (BlockException e) {
-            throw new RateLimitExceededException(
-                    "租户 [" + tenant + "] 请求过于频繁，请稍后重试");
+            throw new RateLimitExceededException("租户 [" + tenant + "] 请求过于频繁，请稍后重试");
         }
     }
 }

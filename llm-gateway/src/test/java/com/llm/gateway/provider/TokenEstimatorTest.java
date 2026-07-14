@@ -1,15 +1,15 @@
 package com.llm.gateway.provider;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.knuddels.jtokkit.api.EncodingType;
 import com.llm.gateway.api.dto.ChatMessage;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TokenEstimatorTest {
 

@@ -1,9 +1,5 @@
 package com.llm.gateway.provider;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -18,21 +14,26 @@ import com.llm.gateway.provider.sse.SseEventReader;
 
 import tools.jackson.databind.ObjectMapper;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 class OpenAiStreamReadTest {
 
     private final OpenAiCompatibleProvider provider =
             new OpenAiCompatibleProvider("openai", "http://localhost:1", "test-key", new ObjectMapper(), null);
 
     private Usage read(String sse, List<ChatCompletionChunk> sink) throws IOException {
-        try (SseEventReader reader = new SseEventReader(
-                new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8)))) {
+        try (SseEventReader reader =
+                new SseEventReader(new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8)))) {
             return provider.readStream(reader, sink::add);
         }
     }
 
     @Test
     void forwardsContentChunksConsumesUsageAndStopsAtDone() throws IOException {
-        String sse = """
+        String sse =
+                """
                 data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
 
                 data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
@@ -57,7 +58,8 @@ class OpenAiStreamReadTest {
 
     @Test
     void returnsNullUsageWhenUpstreamOmitsIt() throws IOException {
-        String sse = """
+        String sse =
+                """
                 data: {"id":"c2","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[{"index":0,"delta":{"content":"X"},"finish_reason":null}]}
 
                 data: [DONE]
@@ -71,7 +73,8 @@ class OpenAiStreamReadTest {
     @Test
     void capturesUsageAttachedToFinalContentChunk() throws IOException {
         // 智谱 GLM、部分 vLLM 配置把 usage 直接挂在最后一个带 choices 的帧上,而不是单独的空 choices 帧
-        String sse = """
+        String sse =
+                """
                 data: {"id":"c3","object":"chat.completion.chunk","created":1,"model":"glm","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
 
                 data: {"id":"c3","object":"chat.completion.chunk","created":1,"model":"glm","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}
@@ -89,7 +92,8 @@ class OpenAiStreamReadTest {
 
     @Test
     void doesNotForwardEmptyChoicesFrameWithoutUsage() throws IOException {
-        String sse = """
+        String sse =
+                """
                 data: {"id":"c4","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[]}
 
                 data: {"id":"c4","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[{"index":0,"delta":{"content":"Y"},"finish_reason":null}]}
@@ -118,7 +122,8 @@ class OpenAiStreamReadTest {
 
     @Test
     void capturesCachedTokensFromUsageFrame() throws IOException {
-        String sse = """
+        String sse =
+                """
                 data: {"id":"c3","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[{"index":0,"delta":{"content":"X"},"finish_reason":null}]}
 
                 data: {"id":"c3","object":"chat.completion.chunk","created":1,"model":"gpt","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":2,"total_tokens":102,"prompt_tokens_details":{"cached_tokens":64}}}

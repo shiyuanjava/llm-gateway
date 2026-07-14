@@ -19,8 +19,18 @@ package com.llm.gateway.persistence.repository;
  * @param errorCode           错误码（失败时）
  * @param latencyMs           端到端耗时（毫秒）
  */
-public record RequestLogRecord(String requestId, String tenant, String requestedModel, String servedModel,
-                               int promptTokens, int completionTokens, int totalTokens,
-                               int cacheReadTokens, int cacheCreationTokens, double costUsd,
-                               boolean cacheHit, String status, String errorCode, long latencyMs) {
-}
+public record RequestLogRecord(
+        String requestId,
+        String tenant,
+        String requestedModel,
+        String servedModel,
+        int promptTokens,
+        int completionTokens,
+        int totalTokens,
+        int cacheReadTokens,
+        int cacheCreationTokens,
+        double costUsd,
+        boolean cacheHit,
+        String status,
+        String errorCode,
+        long latencyMs) {}
