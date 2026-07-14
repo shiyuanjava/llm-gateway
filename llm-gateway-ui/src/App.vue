@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, User, Fold, Expand } from '@element-plus/icons-vue'
@@ -29,6 +29,13 @@ function toggleSidebar() {
   } catch {
     /* 仅内存态 */
   }
+}
+
+// ≤992px 自动折叠;回宽屏恢复手动偏好。自动折叠不写 localStorage,避免污染用户设置
+const narrowQuery = window.matchMedia('(max-width: 992px)')
+
+function onNarrowChange(e) {
+  collapsed.value = e.matches ? true : readStoredCollapsed()
 }
 
 const isLogin = computed(() => route.path === '/login')
@@ -75,6 +82,12 @@ async function reloadConfig() {
 
 onMounted(() => {
   if (!isLogin.value) loadMeta()
+  if (narrowQuery.matches) collapsed.value = true
+  narrowQuery.addEventListener('change', onNarrowChange)
+})
+
+onBeforeUnmount(() => {
+  narrowQuery.removeEventListener('change', onNarrowChange)
 })
 watch(isLogin, (v) => {
   if (!v) loadMeta()
