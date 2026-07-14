@@ -16,5 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to local docker compose
-        shell: bash
-        run: bash llm-gateway/scripts/deploy-local.sh
+        # 显式用 Git Bash 绝对路径:服务模式的 PATH 会把 bash 解析到 WSL 的 system32\bash.exe
+        shell: cmd
+        run: '"C:\Program Files\Git\bin\bash.exe" llm-gateway/scripts/deploy-local.sh'

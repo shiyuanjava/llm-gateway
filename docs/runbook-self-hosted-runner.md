@@ -64,3 +64,12 @@
 - 前台模式:关掉 run.cmd 窗口即暂停自动部署,重新执行 `run.cmd` 恢复
 - 服务模式:`Get-Service "actions.runner.*"` 查看;`Stop-Service`/`Start-Service` 控制
 - 卸载 runner:先停止,然后 `./config.cmd remove --token <token>`
+
+## 已踩过的坑
+
+- **服务模式下 `shell: bash` 会解析到 WSL 的 `C:\Windows\system32\bash.exe`**(服务 PATH 与交互
+  会话不同),导致步骤秒败 exit 1。因此 workflow 用 `shell: cmd` + Git Bash 绝对路径
+  `"C:\Program Files\Git\bin\bash.exe"` 显式调用,不依赖 PATH。
+- runner 的全新 checkout 没有 `.env`,部署脚本从 `~/.llm-gateway/deploy.env` 读取(见"前置")。
+- runner 日志里偶发 `BrokerServer SocketException` 退避重试,是本机代理对长轮询的干扰,
+  不影响任务派发,可忽略。
