@@ -5,6 +5,7 @@
 !/docs/
 !/README.md
 !/.gitignore
+!/.github/
 
 # 任意层级的本地工具与 IDE 产物
 .claude/

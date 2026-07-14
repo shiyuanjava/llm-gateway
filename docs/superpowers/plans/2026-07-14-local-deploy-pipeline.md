@@ -14,43 +14,47 @@
 
 ---
 
-### Task 1: 根目录 .gitattributes(保证脚本 LF)
+### Task 1: .gitignore 白名单放行 .github
+
+> 修订(执行时发现):仓库 .gitignore 为白名单模式(`/*` + `!/...`),根目录新文件默认全被忽略。
+> 因此:workflow 所在的 `.github/` 需加入白名单;部署脚本改放 `llm-gateway/scripts/`(已在白名单内,
+> 且自动适用 `llm-gateway/.gitattributes` 的 `*.sh text eol=lf` 规则),原"根 .gitattributes"不再需要。
 
 **Files:**
-- Create: `.gitattributes`(仓库根;现有的 `llm-gateway/.gitattributes` 只对其子目录生效)
+- Modify: `.gitignore`
 
-- [ ] **Step 1: 创建文件**
+- [ ] **Step 1: 白名单增加 .github**
 
-内容:
+在 `!/.gitignore` 一行后追加:
 
 ```
-*.sh text eol=lf
+!/.github/
 ```
 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add .gitattributes
-git commit -m "chore: 根目录 .sh 强制 LF,为部署脚本铺路"
+git add .gitignore
+git commit -m "chore: gitignore 白名单放行 .github,为 CI workflow 铺路"
 ```
 
 ---
 
-### Task 2: 部署脚本 scripts/deploy-local.sh
+### Task 2: 部署脚本 llm-gateway/scripts/deploy-local.sh
 
 **Files:**
-- Create: `scripts/deploy-local.sh`
+- Create: `llm-gateway/scripts/deploy-local.sh`
 
 - [ ] **Step 1: 创建脚本**
 
 ```bash
 #!/usr/bin/env bash
 # 本机部署:重建随代码变化的 gateway/ui 并等待健康。
-# 由 GitHub Actions self-hosted runner 调用;也可在仓库根手动执行:bash scripts/deploy-local.sh
+# 由 GitHub Actions self-hosted runner 调用;也可手动执行:bash llm-gateway/scripts/deploy-local.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-compose() { docker compose -f llm-gateway/docker-compose.yml "$@"; }
+compose() { docker compose -f docker-compose.yml "$@"; }
 
 echo "==> build gateway ui"
 compose build gateway ui
@@ -68,14 +72,14 @@ echo "==> deploy done"
 
 - [ ] **Step 2: 语法检查**
 
-Run: `bash -n scripts/deploy-local.sh`
+Run: `bash -n llm-gateway/scripts/deploy-local.sh`
 Expected: 无输出,退出码 0
 
 - [ ] **Step 3: 本地真实执行一次(等价手动部署,验证脚本正确)**
 
 前置:Docker Desktop 运行中。
 
-Run: `bash scripts/deploy-local.sh`
+Run: `bash llm-gateway/scripts/deploy-local.sh`
 Expected: 依次输出 `==> build gateway ui`(大量构建日志,缓存命中时很快)、`==> up -d --wait gateway ui`、容器 Healthy/Started、`==> deploy done`,退出码 0
 
 Run: `docker ps --filter name=llm-gateway-gateway-1 --format "{{.Status}}"`
@@ -85,18 +89,18 @@ Expected: `Up ... (healthy)`
 
 用一个连不上的 DOCKER_HOST 让 docker 命令必然失败:
 
-Run: `DOCKER_HOST=tcp://127.0.0.1:1 bash scripts/deploy-local.sh; echo "exit=$?"`
+Run: `DOCKER_HOST=tcp://127.0.0.1:1 bash llm-gateway/scripts/deploy-local.sh; echo "exit=$?"`
 Expected: 报 docker 连接错误,输出 `exit=` 后跟非 0 值(证明 `set -euo pipefail` 会把失败传给 workflow 标红)
 
 - [ ] **Step 5: 确认行尾为 LF**
 
-Run: `git ls-files --eol scripts/deploy-local.sh`(需先 `git add`)
+Run: `git ls-files --eol llm-gateway/scripts/deploy-local.sh`(需先 `git add`)
 Expected: 含 `w/lf` 且属性列显示 `text eol=lf`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/deploy-local.sh
+git add llm-gateway/scripts/deploy-local.sh
 git commit -m "feat: 本机部署脚本(compose 重建 gateway/ui 并等待健康)"
 ```
 
@@ -129,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Deploy to local docker compose
         shell: bash
-        run: bash scripts/deploy-local.sh
+        run: bash llm-gateway/scripts/deploy-local.sh
 ```
 
 - [ ] **Step 2: YAML 结构自查**
