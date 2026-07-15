@@ -60,7 +60,17 @@ public class RoutingRuleAdminService {
         if (entity.getId() == null) {
             ruleMapper.insert(entity);
         } else {
-            ruleMapper.updateById(entity);
+            // PUT 全量更新语义:显式 set 全部业务列(null 也写入),可空的阈值/升级目标才能被清回 NULL
+            ruleMapper.update(
+                    null,
+                    Wrappers.<RoutingRuleEntity>update()
+                            .eq("id", entity.getId())
+                            .set("alias", entity.getAlias())
+                            .set("primary_provider", entity.getPrimaryProvider())
+                            .set("primary_model", entity.getPrimaryModel())
+                            .set("max_prompt_tokens", entity.getMaxPromptTokens())
+                            .set("escalate_provider", entity.getEscalateProvider())
+                            .set("escalate_model", entity.getEscalateModel()));
         }
 
         // 降级链整体替换：先删后插

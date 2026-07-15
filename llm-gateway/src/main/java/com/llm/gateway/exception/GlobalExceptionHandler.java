@@ -8,6 +8,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.auth.admin.AdminAuthService;
@@ -86,6 +87,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ClientDisconnectedException.class)
     public void handleClientDisconnected(ClientDisconnectedException ex) {
         log.debug("客户端断开：{}", ex.getMessage());
+    }
+
+    /**
+     * 未知路径（无对应 handler 且无静态资源）：404 而非落进兜底的 500。
+     * 扫描器会高频探测随机路径，仅记 debug 避免刷日志。
+     *
+     * @param ex 未知路径信号
+     * @return 404 错误响应
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException ex) {
+        log.debug("未知路径: /{}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse.of("请求路径不存在", "not_found"));
     }
 
     /**

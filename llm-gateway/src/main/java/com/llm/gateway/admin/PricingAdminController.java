@@ -54,9 +54,8 @@ public class PricingAdminController {
     }
 
     /**
-     * 修改(PUT 全量更新语义:显式 set 全部业务列,null 也写入 ——
-     * updateById 会跳过 null 字段,缓存单价将无法清回 NULL)。
-     * 注意:请求体缺省必填列(model、inputPer1k、outputPer1k)将因数据库 NOT NULL 约束报错。
+     * 修改（PUT 全量更新语义）：显式 set 全部业务列（null 也写入），可空的缓存单价才能被清回 NULL。
+     * 注意：请求体缺省必填列（model、inputPer1k、outputPer1k）将因数据库 NOT NULL 约束报错。
      *
      * @param id     主键
      * @param entity 新值

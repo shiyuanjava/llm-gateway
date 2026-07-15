@@ -41,7 +41,7 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 | `model_pricing` | 配置 | 模型每 1K Token 计费单价 |
 | `request_log` | 记录 | 每次请求的审计、用量、成本(也是配额数据源) |
 
-- 建表与种子脚本:`src/main/resources/db/migration/`(Flyway 版本化:`V1__baseline_schema.sql` 建表、`V2__seed_demo_data.sql` 演示数据;启动自动迁移,已发布脚本永不修改,变更加 V3+)。
+- 建表与种子脚本:`src/main/resources/db/migration/`(Flyway 版本化:`V1__baseline_schema.sql` 建表、`V2__seed_demo_data.sql` 演示数据、`V3__purge_demo_api_keys.sql` 演示 Key 生产门禁;启动自动迁移,已发布脚本永不修改,变更加新版本)。
 - ORM:**MyBatis-Plus**(Boot 4 须用 `mybatis-plus-spring-boot4-starter`,本项目用 `3.5.16`)。实体 `persistence/entity`、Mapper `persistence/mapper`、领域仓储 `persistence/repository`(接口 + 实现,屏蔽存储细节、便于单测注入假实现)。
 - 配置类服务(`ApiKeyService` / `RuleBasedRouter` / `CostCalculator`)启动时从 DB 加载并缓存;`QuotaService` 按 `request_log` 实时聚合;`GatewayService` 在每次请求收尾时写入一条 `request_log`(success / cache_hit / error)。
 
@@ -49,7 +49,7 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 
 ## 管理后台与 Admin API
 
-后端提供 `/admin/**` 管理接口(本地开发未鉴权,响应为 `{code,msg,data}` camelCase 包装):
+后端提供 `/admin/**` 管理接口(除 `/admin/auth/login` 外一律要求 Bearer JWT:`AdminJwtFilter` 无条件挂载、fail-closed,`GATEWAY_JWT_SECRET` 缺失或过短则拒绝启动;响应为 `{code,msg,data}` camelCase 包装):
 
 | 接口 | 说明 |
 |---|---|
@@ -80,7 +80,7 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 | L5 验证 | 质检 | `GuardrailEngine`(确定性护栏)+ 单元测试 |
 | L6 恢复 | 红线与应急 | `ResilientExecutor`(重试/熔断/Fallback)+ `GlobalExceptionHandler` |
 
-设计原则:**约束优先**(策略外置到配置与数据库)、**可验证性**(确定性护栏 + 23 个单测)、**故障假设**(每类失败建模为带状态码的异常并可降级 + 落审计)、**少即是多**(手写轻量熔断器,不引 Resilience4j)。
+设计原则:**约束优先**(策略外置到配置与数据库)、**可验证性**(确定性护栏 + 覆盖全链路的单元/集成测试)、**故障假设**(每类失败建模为带状态码的异常并可降级 + 落审计)、**少即是多**(手写轻量熔断器,不引 Resilience4j)。
 
 ---
 
@@ -139,7 +139,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ### 3. 跑测试 / 启动
 
 ```bash
-mvn test            # 23 个测试（单元测试无需外网；contextLoads 需要 MySQL）
+mvn test            # 全量测试(无需外网;集成测试需要上面配置的本地 MySQL)
+
+# 启动前必填:管理端 JWT 密钥(≥32 字符,缺失或过短拒绝启动)与首启引导管理员
+export GATEWAY_JWT_SECRET=$(openssl rand -hex 32)
+export ADMIN_USERNAME=admin ADMIN_PASSWORD=change-me   # 仅 admin_user 表为空时创建
+
 mvn spring-boot:run # 启动网关，监听 8080
 ```
 
@@ -178,7 +183,7 @@ docker compose up -d --build
 | mysql | 3306(仅容器网络) | 数据持久化在 named volume `mysql-data`;建表/种子由 gateway 启动时 Flyway 自动迁移 |
 | redis | 6379(仅容器网络) | 响应缓存(纯缓存不持久化,LRU 256MB);gateway 对其故障 fail-open |
 
-- API 调用:`http://<host>:${UI_PORT}/v1/chat/completions`(Bearer API Key,经 nginx 反代,SSE 不缓冲)。Key 可用 seed 预置的演示 Key `sk-demo-tenant-a`,或在管理台新建一个 `sk-gw-` 开头的 Key。
+- API 调用:`http://<host>:${UI_PORT}/v1/chat/completions`(Bearer API Key,经 nginx 反代,SSE 不缓冲)。Key 在管理台新建(`sk-gw-` 开头);seed 的演示 Key `sk-demo-tenant-a/b` 仅存在于开发环境,prod profile 首次迁移即被 `V3__purge_demo_api_keys.sql` 清除。
 - 日志:`docker compose logs -f gateway`(控制台);容器内 `/app/logs/gateway.log`(prod profile,按天 + 100MB 滚动,保留 14 天,总量 2GB;注意日志在容器写层,容器重建即丢,如需留存可给 `/app/logs` 挂 volume)。每行日志含 traceId,与响应头 `X-Request-Id`、`request_log.request_id` 同 ID,可互查。
 - 优雅停机:`docker compose stop`(SIGTERM)后不再接新请求,进行中的请求(含 SSE 流)最多 30s 收尾。
 

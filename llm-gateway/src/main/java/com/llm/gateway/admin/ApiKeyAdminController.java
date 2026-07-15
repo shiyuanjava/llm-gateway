@@ -65,19 +65,27 @@ public class ApiKeyAdminController {
     }
 
     /**
-     * 修改。客户端提交的 key 字段强制忽略（防篡改）：哈希与前缀置空后
-     * {@code updateById} 跳过 null 列，因此不可被修改。
+     * 修改（PUT 全量更新语义，同 Pricing）：显式 set 全部业务列；key 哈希与前缀不在
+     * SET 列表中，请求体携带的 key 字段天然无效（防篡改），响应中也不回显。
+     * 注意：请求体缺省必填列（tenant 等）将因数据库 NOT NULL 约束报错。
      *
      * @param id     主键
      * @param entity 新值
-     * @return 修改后的实体
+     * @return 修改后的实体（不含 key 字段）
      */
     @PutMapping("/{id}")
     public R<ApiKeyEntity> update(@PathVariable Long id, @RequestBody ApiKeyEntity entity) {
         entity.setId(id);
         entity.setKeyHash(null);
         entity.setKeyPrefix(null);
-        mapper.updateById(entity);
+        mapper.update(
+                null,
+                Wrappers.<ApiKeyEntity>update()
+                        .eq("id", id)
+                        .set("tenant", entity.getTenant())
+                        .set("roles", entity.getRoles())
+                        .set("allowed_models", entity.getAllowedModels())
+                        .set("enabled", entity.getEnabled()));
         refreshService.reloadAll();
         return R.ok(entity);
     }
