@@ -77,4 +77,22 @@ class AdminAuthServiceTest {
         assertThatThrownBy(() -> new AdminAuthService(mapper, new AdminAuthProperties("short", 120, "", ""), null))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void rotatedSecretStillVerifiesOldTokens() {
+        // 旧密钥签发的 token,在新密钥服务里凭 fallback 列表仍可验签;新密钥签发的自然也可以
+        AdminAuthService.LoginResult oldToken = service.login("admin", "secret-pass", "127.0.0.1");
+        String newSecret = "rotated-secret-0123456789abcdef0123456789";
+        AdminAuthService rotated = new AdminAuthService(
+                mapper,
+                new AdminAuthProperties(newSecret, java.util.List.of(SECRET), 120, "", ""),
+                null);
+        assertThat(rotated.verify(oldToken.token())).isPresent();
+        assertThat(rotated.verify(rotated.login("admin", "secret-pass", "127.0.0.1").token()))
+                .isPresent();
+        // 不带 fallback 的实例则拒绝旧 token
+        AdminAuthService noFallback =
+                new AdminAuthService(mapper, new AdminAuthProperties(newSecret, 120, "", ""), null);
+        assertThat(noFallback.verify(oldToken.token())).isEmpty();
+    }
 }

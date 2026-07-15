@@ -159,6 +159,8 @@ gateway:
   # ---- 管理端鉴权 ----
   admin:
     jwt-secret: ${GATEWAY_JWT_SECRET:}
+    # 密钥轮换:换新 GATEWAY_JWT_SECRET 时把旧密钥放这里(逗号分隔),旧 token 在 TTL 内仍可验签;过渡期后清空
+    jwt-secrets-fallback: ${GATEWAY_JWT_SECRETS_FALLBACK:}
     token-ttl-minutes: 120
     bootstrap-username: ${ADMIN_USERNAME:}
     bootstrap-password: ${ADMIN_PASSWORD:}

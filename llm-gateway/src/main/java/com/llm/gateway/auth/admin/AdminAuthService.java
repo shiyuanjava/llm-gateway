@@ -1,9 +1,11 @@
 package com.llm.gateway.auth.admin;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.SecretKey;
 
 import org.slf4j.Logger;
@@ -13,6 +15,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.llm.gateway.audit.AdminAuditService;
 import com.llm.gateway.config.AdminAuthProperties;
 import com.llm.gateway.exception.AuthenticationException;
@@ -25,6 +29,9 @@ import io.jsonwebtoken.security.Keys;
 /**
  * 管理端账号鉴权服务：BCrypt 密码校验、JWT（HS256）签发与验签、登录防爆破锁定、
  * 首个管理员账号引导。
+ *
+ * <p>密钥轮换：签发恒用当前密钥；验签依次尝试「当前 + 历史」密钥列表
+ * （{@code gateway.admin.jwt-secrets-fallback}），轮换时旧 token 在 TTL 内仍有效，平滑过渡。
  *
  * <p>不引入 Spring Security 全家桶，与网关现有手写 Filter 风格一致。
  */
@@ -54,8 +61,16 @@ public class AdminAuthService {
 
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final SecretKey signingKey;
-    /** username -> 失败状态（次数 + 锁定截止时间）。单实例内存即可，多实例部署由 SCA 阶段统一。 */
-    private final ConcurrentHashMap<String, FailureState> failures = new ConcurrentHashMap<>();
+    /** 验签密钥链：当前签发密钥在前，历史密钥在后（轮换过渡期）。 */
+    private final List<SecretKey> verifyKeys;
+    /**
+     * username -> 失败状态（次数 + 锁定截止时间）。Caffeine 限容 + 过期，
+     * 用户名爆破探测不会撑爆内存。单实例内存即可，多实例部署由 SCA 阶段统一。
+     */
+    private final Cache<String, FailureState> failures = Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofMillis(LOCK_MILLIS * 3))
+            .build();
 
     private record FailureState(int count, long lockedUntilMs) {}
 
@@ -68,6 +83,16 @@ public class AdminAuthService {
         this.properties = properties;
         this.auditService = auditService;
         this.signingKey = Keys.hmacShaKeyFor(properties.jwtSecret().getBytes(StandardCharsets.UTF_8));
+        List<SecretKey> keys = new ArrayList<>();
+        keys.add(signingKey);
+        if (properties.jwtSecretsFallback() != null) {
+            for (String secret : properties.jwtSecretsFallback()) {
+                if (secret != null && secret.length() >= MIN_SECRET_LENGTH) {
+                    keys.add(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)));
+                }
+            }
+        }
+        this.verifyKeys = List.copyOf(keys);
         bootstrapAdmin();
     }
 
@@ -82,7 +107,7 @@ public class AdminAuthService {
      * @throws LoginLockedException    连续失败被锁定
      */
     public LoginResult login(String username, String password, String clientIp) {
-        FailureState state = failures.get(username);
+        FailureState state = failures.getIfPresent(username);
         long now = System.currentTimeMillis();
         if (state != null && state.lockedUntilMs() > now) {
             audit(username, "LOGIN_LOCKED", clientIp, 423);
@@ -98,7 +123,7 @@ public class AdminAuthService {
             audit(username, "LOGIN_FAIL", clientIp, 401);
             throw new AuthenticationException("用户名或密码错误");
         }
-        failures.remove(username);
+        failures.invalidate(username);
         audit(username, "LOGIN_OK", clientIp, 200);
         Date expiry = new Date(now + properties.tokenTtlMinutes() * 60_000L);
         String token = Jwts.builder()
@@ -111,7 +136,7 @@ public class AdminAuthService {
     }
 
     /**
-     * 验签：合法且未过期则返回主体。
+     * 验签：合法且未过期则返回主体。依次尝试当前与历史密钥（密钥轮换过渡期）。
      *
      * @param token JWT
      * @return 主体，非法/过期为空
@@ -120,17 +145,20 @@ public class AdminAuthService {
         if (token == null || token.isBlank()) {
             return Optional.empty();
         }
-        try {
-            String username = Jwts.parser()
-                    .verifyWith(signingKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload()
-                    .getSubject();
-            return Optional.of(new AdminPrincipal(username));
-        } catch (Exception e) {
-            return Optional.empty();
+        for (SecretKey key : verifyKeys) {
+            try {
+                String username = Jwts.parser()
+                        .verifyWith(key)
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload()
+                        .getSubject();
+                return Optional.of(new AdminPrincipal(username));
+            } catch (Exception e) {
+                // 换下一把密钥再试；全部失败视为非法 token
+            }
         }
+        return Optional.empty();
     }
 
     /** 引导：admin_user 表为空且配置了引导账号时创建首个管理员。 */
@@ -155,7 +183,7 @@ public class AdminAuthService {
 
     /** 记录一次失败，达到上限则设置锁定截止时间。 */
     private void recordFailure(String username, long now) {
-        failures.compute(username, (u, old) -> {
+        failures.asMap().compute(username, (u, old) -> {
             int count = (old == null || old.lockedUntilMs() > 0 ? 0 : old.count()) + 1;
             long lockedUntil = count >= MAX_FAILURES ? now + LOCK_MILLIS : 0;
             return new FailureState(count, lockedUntil);
