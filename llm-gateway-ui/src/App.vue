@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, User, Fold, Expand } from '@element-plus/icons-vue'
 import { metaApi } from './api'
-import { getUsername, clearSession } from './auth/session'
+import { clearSession, currentUsername } from './auth/session'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,8 +39,8 @@ function onNarrowChange(e) {
 }
 
 const isLogin = computed(() => route.path === '/login')
-// 依赖 route.path:登录/退出都会切路由,借此让用户名重新读取 localStorage
-const username = computed(() => (route.path, getUsername()))
+// 响应式用户名:登录/登出时由 session.js 更新
+const username = currentUsername
 
 function logout() {
   clearSession()

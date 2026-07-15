@@ -15,41 +15,24 @@ const {
   load,
   openCreate,
   openEdit,
-  submit: baseSubmit,
+  submit,
   remove,
 } = useCrudDialog({
   api: apiKeyApi,
   blankForm: () => ({ id: null, tenant: '', roles: 'user', allowedModels: '*', enabled: true }),
   confirmText: (row) => `确认删除 API Key「${row.keyPrefix}…」?`,
   buildPayload: (f) => ({ ...f, enabled: f.enabled !== false }),
+  // 创建成功后后端返回 { entity, apiKey };接管默认行为,弹一次性明文展示对话框
+  onCreated: (data) => {
+    dialog.visible = false
+    created.apiKey = data.apiKey
+    created.visible = true
+    return false
+  },
 })
 
-// 创建成功后后端返回 { entity, apiKey };弹一次性展示对话框
+// 一次性展示的明文 Key(仅存内存,关闭即清)
 const created = reactive({ visible: false, apiKey: '' })
-
-async function submit() {
-  if (dialog.mode === 'create') {
-    try {
-      await formRef.value.validate()
-    } catch {
-      return
-    }
-    dialog.saving = true
-    try {
-      const data = await apiKeyApi.create({ ...form, enabled: form.enabled !== false })
-      dialog.visible = false
-      created.apiKey = data.apiKey
-      created.visible = true
-      load()
-    } catch (e) {
-      /* 错误已由拦截器提示 */
-    } finally {
-      dialog.saving = false
-    }
-  } else {
-    await baseSubmit()
-  }
-}
 
 async function copyKey() {
   try {

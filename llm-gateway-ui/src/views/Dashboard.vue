@@ -7,13 +7,17 @@ const loading = ref(false)
 const rows = ref([])
 const MAX_ROWS = 100
 const truncated = ref(false)
+/** 请求序号:连点刷新时后发先至的旧响应会被丢弃 */
+let loadSeq = 0
 // 指标卡总量基于完整数据计算,表格仅展示截断后的前 MAX_ROWS 行
 const totals = ref({ requests: 0, tokens: 0, cost: 0, tenants: 0 })
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const data = await logApi.stats()
+    if (seq !== loadSeq) return // 过期响应:已有更新的请求在途/完成,丢弃
     totals.value = {
       requests: data.reduce((s, x) => s + (x.requests || 0), 0),
       tokens: data.reduce((s, x) => s + (x.tokens || 0), 0),
@@ -26,7 +30,7 @@ async function load() {
   } catch (e) {
     /* 错误已由拦截器提示;吞掉 rejection,onMounted/刷新按钮可安全地 fire-and-forget */
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

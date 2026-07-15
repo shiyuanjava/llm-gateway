@@ -6,6 +6,10 @@ import { auditApi } from '../api'
 const loading = ref(false)
 const rows = ref([])
 const total = ref(0)
+/** 加载失败标记:与「暂无数据」区分,给用户原地重试入口 */
+const loadError = ref(false)
+/** 请求序号:快速翻页/改条件时后发先至的旧响应会被丢弃,防止列表显示旧数据 */
+let loadSeq = 0
 const query = reactive({ username: '', action: '', page: 1, size: 20 })
 const timeRange = ref([])
 
@@ -20,6 +24,7 @@ const actionMeta = {
 }
 
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   try {
     const params = { ...query }
@@ -28,12 +33,15 @@ async function load() {
       params.to = timeRange.value[1]
     }
     const data = await auditApi.list(params)
+    if (seq !== loadSeq) return // 过期响应:已有更新的请求在途/完成,丢弃
     rows.value = data.records || []
     total.value = data.total || 0
+    loadError.value = false
   } catch (e) {
-    /* 错误已由拦截器提示;吞掉 rejection,onMounted/刷新按钮可安全地 fire-and-forget */
+    /* 错误已由拦截器提示;标记错误态给出重试入口 */
+    if (seq === loadSeq) loadError.value = true
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 function search() {
@@ -92,7 +100,7 @@ onMounted(load)
           value-format="YYYY-MM-DDTHH:mm:ss"
           style="width: 340px"
         />
-        <el-button type="primary" @click="search"
+        <el-button type="primary" :loading="loading" @click="search"
           ><el-icon><Search /></el-icon>&nbsp;查询</el-button
         >
         <el-button @click="reset"
@@ -100,7 +108,13 @@ onMounted(load)
         >
       </div>
 
-      <el-table :data="rows" v-loading="loading" style="width: 100%" empty-text="暂无审计记录">
+      <el-table :data="rows" v-loading="loading" style="width: 100%">
+        <template #empty>
+          <el-empty v-if="loadError" description="加载失败" :image-size="60">
+            <el-button type="primary" size="small" @click="load">重试</el-button>
+          </el-empty>
+          <span v-else>暂无审计记录</span>
+        </template>
         <el-table-column label="时间" width="170">
           <template #default="{ row }"
             ><span class="tabular-nums">{{ fmtTime(row.createdAt) }}</span></template
