@@ -29,6 +29,8 @@ async function load() {
     const data = await logApi.list(params)
     rows.value = data.records || []
     total.value = data.total || 0
+  } catch (e) {
+    /* 错误已由拦截器提示;吞掉 rejection,onMounted/刷新按钮可安全地 fire-and-forget */
   } finally {
     loading.value = false
   }

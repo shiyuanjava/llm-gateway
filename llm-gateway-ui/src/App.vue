@@ -75,6 +75,8 @@ async function reloadConfig() {
   try {
     await metaApi.reload()
     ElMessage.success('配置缓存已刷新')
+  } catch (e) {
+    /* 错误已由拦截器提示;吞掉 rejection,点击回调可安全地 fire-and-forget */
   } finally {
     reloading.value = false
   }

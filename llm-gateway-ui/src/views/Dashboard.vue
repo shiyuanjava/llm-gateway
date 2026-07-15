@@ -23,6 +23,8 @@ async function load() {
     truncated.value = data.length > MAX_ROWS
     // 按 Token 用量降序,截断时保证展示的是用量最高的租户
     rows.value = [...data].sort((a, b) => (b.tokens || 0) - (a.tokens || 0)).slice(0, MAX_ROWS)
+  } catch (e) {
+    /* 错误已由拦截器提示;吞掉 rejection,onMounted/刷新按钮可安全地 fire-and-forget */
   } finally {
     loading.value = false
   }

@@ -45,4 +45,4 @@ cd ../llm-gateway && docker compose up -d --build
 - `GET /admin/logs`(分页/筛选)、`GET /admin/logs/stats`(按租户聚合)
 - `GET /admin/meta`、`POST /admin/meta/reload`
 
-> 本地开发后端 `/admin/**` 未鉴权;生产应加管理员鉴权并收敛 CORS。
+> `/admin/**`(除登录接口)一律要求管理员 JWT:登录页获取 token,axios 拦截器自动携带、401 跳回登录;生产 CORS 默认收敛为空白名单(同源反代零跨域)。

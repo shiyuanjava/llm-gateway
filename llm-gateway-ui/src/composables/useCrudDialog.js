@@ -22,6 +22,8 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
     loading.value = true
     try {
       rows.value = await api.list()
+    } catch (e) {
+      /* 错误已由拦截器提示;吞掉 rejection,调用方可安全地 fire-and-forget */
     } finally {
       loading.value = false
     }
