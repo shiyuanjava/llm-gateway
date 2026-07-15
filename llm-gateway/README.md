@@ -166,7 +166,7 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## Docker Compose 部署(单机生产)
 
-前置:Docker 20+ 与 Docker Compose v2;前端仓库 `llm-gateway-ui` 与本仓库同级目录。
+前置:Docker 20+ 与 Docker Compose v2;前端目录 `../llm-gateway-ui` 与本目录同级(同一仓库内)。
 
 ```bash
 cp .env.example .env   # 编辑必填项:MYSQL_ROOT_PASSWORD、GATEWAY_JWT_SECRET(≥32 字符)、ADMIN_USERNAME/PASSWORD

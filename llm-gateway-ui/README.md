@@ -29,7 +29,7 @@ npm run build    # 产物输出到 dist/
 
 ## 生产部署
 
-本仓库自带 `Dockerfile` + `nginx.conf`:nginx 托管 `dist/` 并把 `/admin`、`/v1` 同源反代到后端容器(SPA 路由回退、SSE 不缓冲)。**由后端仓库 `llm-gateway/docker-compose.yml` 统一编排**,无需单独部署(先按 `llm-gateway/README` 的部署章节配置好 `.env`):
+本目录自带 `Dockerfile` + `nginx.conf`:nginx 托管 `dist/` 并把 `/admin`、`/v1` 同源反代到后端容器(SPA 路由回退、SSE 不缓冲)。**由后端 `../llm-gateway/docker-compose.yml` 统一编排**,无需单独部署(先按 `llm-gateway/README` 的部署章节配置好 `.env`):
 
 ```bash
 cd ../llm-gateway && docker compose up -d --build
