@@ -99,9 +99,6 @@ public class MockProvider implements LlmProvider {
         }
         int cut1 = content.offsetByCodePoints(0, codePoints / 3);
         int cut2 = content.offsetByCodePoints(cut1, codePoints / 3);
-        return List.of(
-                content.substring(0, cut1),
-                content.substring(cut1, cut2),
-                content.substring(cut2));
+        return List.of(content.substring(0, cut1), content.substring(cut1, cut2), content.substring(cut2));
     }
 }

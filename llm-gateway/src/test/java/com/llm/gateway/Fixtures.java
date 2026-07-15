@@ -19,8 +19,7 @@ import com.llm.gateway.config.GatewayProperties.Routing;
  */
 public final class Fixtures {
 
-    private Fixtures() {
-    }
+    private Fixtures() {}
 
     /** @return 一份默认配置 */
     public static GatewayProperties properties() {
@@ -38,13 +37,18 @@ public final class Fixtures {
      * @param maxRetries        最大重试次数
      * @return 配置
      */
-    public static GatewayProperties properties(int requestsPerMinute, long cacheTtlSeconds, long tokensPerTenant,
-                                               int cbThreshold, int cbOpenSeconds, int maxRetries) {
+    public static GatewayProperties properties(
+            int requestsPerMinute,
+            long cacheTtlSeconds,
+            long tokensPerTenant,
+            int cbThreshold,
+            int cbOpenSeconds,
+            int maxRetries) {
         return new GatewayProperties(
                 new Routing("deepseek-v4-pro"),
                 new Llm("deepseek", "deepseek-v4-pro"),
                 Map.of("mock", new ProviderConfig("", "")),
-                new RateLimit(requestsPerMinute),
+                new RateLimit("memory", requestsPerMinute),
                 new Quota(tokensPerTenant),
                 new Cache(true, "memory", cacheTtlSeconds, new Cache.Semantic(false, 0.92)),
                 new Guardrail(List.of("制造炸弹")),

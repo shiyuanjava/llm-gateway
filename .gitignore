@@ -1,10 +1,11 @@
-# monorepo 白名单:仓库只收 LLM Gateway 前后端与设计文档,本目录下其余练习项目不入库
+# 白名单:仓库只收 LLM Gateway 前后端与文档。仓库已独立在 llm-gateway-project 目录(2026-07 从与练习项目混放的上级目录迁出),白名单保留作兜底,根目录杂物默认不入库
 /*
 !/llm-gateway/
 !/llm-gateway-ui/
 !/docs/
 !/README.md
 !/.gitignore
+!/.github/
 
 # 任意层级的本地工具与 IDE 产物
 .claude/

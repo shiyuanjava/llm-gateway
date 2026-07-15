@@ -23,8 +23,7 @@ public final class SseEventReader implements Closeable {
     static final int MAX_EVENT_CHARS = 1_048_576;
 
     /** 一个 SSE 事件:event 行的名字(可空)与拼接后的 data。 */
-    public record SseEvent(String event, String data) {
-    }
+    public record SseEvent(String event, String data) {}
 
     private final BufferedReader reader;
     private boolean bomPending = true;
@@ -63,7 +62,9 @@ public final class SseEventReader implements Closeable {
             }
             if (line.startsWith("data:")) {
                 String value = fieldValue(line, 5);
-                data = data == null ? new StringBuilder(value) : data.append('\n').append(value);
+                data = data == null
+                        ? new StringBuilder(value)
+                        : data.append('\n').append(value);
                 if (data.length() > MAX_EVENT_CHARS) {
                     throw new IOException("SSE 事件超过上限 " + MAX_EVENT_CHARS + " 字符");
                 }

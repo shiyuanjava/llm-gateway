@@ -11,7 +11,9 @@ public class PricingNotConfiguredException extends GatewayException {
 
     /** @param model 未配置定价的物理模型名 */
     public PricingNotConfiguredException(String model) {
-        super(HttpStatus.UNPROCESSABLE_ENTITY, "pricing_not_configured",
+        super(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "pricing_not_configured",
                 "模型 [" + model + "] 未配置计费单价，请先在管理端「计费单价」配置（模型名支持尾部 * 通配）");
     }
 }

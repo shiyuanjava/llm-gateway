@@ -1,13 +1,10 @@
 package com.llm.gateway.core.streaming;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -16,9 +13,13 @@ import com.llm.gateway.api.dto.ChatCompletionChunk;
 import com.llm.gateway.api.dto.Usage;
 import com.llm.gateway.exception.ClientDisconnectedException;
 
-import jakarta.servlet.ServletOutputStream;
-import jakarta.servlet.WriteListener;
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SseWriterTest {
 
@@ -96,8 +97,8 @@ class SseWriterTest {
         };
         SseWriter writer = new SseWriter(response, mapper);
 
-        ClientDisconnectedException ex = assertThrows(ClientDisconnectedException.class,
-                () -> writer.write(ChatCompletionChunk.content("c", 1, "m", "x")));
+        ClientDisconnectedException ex = assertThrows(
+                ClientDisconnectedException.class, () -> writer.write(ChatCompletionChunk.content("c", 1, "m", "x")));
 
         assertSame(broken, ex.getCause(), "应保留原始 IOException 作为 cause");
         // 刻意语义：started 在首字节确认写出前即置位——首写失败说明客户端已消失，不应再换目标重试

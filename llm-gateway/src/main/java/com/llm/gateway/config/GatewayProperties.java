@@ -4,11 +4,12 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * 网关的外置配置（前缀 {@code gateway}）。
  *
- * <p>注意：API Key、路由规则、计费单价已迁移到<strong>数据库</strong>（见 {@code schema.sql}），
+ * <p>注意：API Key、路由规则、计费单价已迁移到<strong>数据库</strong>（见 {@code db/migration}），
  * 不再放在这里。本配置只保留运营参数：默认模型、默认 LLM、供应商接入、限流、配额、缓存、护栏、容错。
  *
  * @param routing    路由相关参数（默认物理模型）
@@ -36,10 +37,27 @@ public record GatewayProperties(
     /**
      * 出站 HTTP 客户端配置（调用各 LLM 供应商）。
      *
-     * @param connectTimeoutMs 连接超时毫秒
-     * @param readTimeoutMs    读超时毫秒
+     * @param connectTimeoutMs    连接超时毫秒
+     * @param readTimeoutMs       读超时毫秒（流式场景为「帧间停顿上限」）
+     * @param streamMaxDurationMs 单条流式响应的总时长上限毫秒（wall-clock deadline）：
+     *                            防止「每 <读超时 滴一个字节」的慢速流无限占用连接
      */
-    public record Http(int connectTimeoutMs, int readTimeoutMs) {
+    public record Http(int connectTimeoutMs, int readTimeoutMs, long streamMaxDurationMs) {
+
+        private static final long DEFAULT_STREAM_MAX_DURATION_MS = 300_000L;
+
+        /** 配置绑定用规范构造器（存在多个构造器时需显式指定）。 */
+        @ConstructorBinding
+        public Http {
+            if (streamMaxDurationMs <= 0) {
+                streamMaxDurationMs = DEFAULT_STREAM_MAX_DURATION_MS;
+            }
+        }
+
+        /** 兼容旧签名（测试用）：流式总时长上限取默认 5 分钟。 */
+        public Http(int connectTimeoutMs, int readTimeoutMs) {
+            this(connectTimeoutMs, readTimeoutMs, DEFAULT_STREAM_MAX_DURATION_MS);
+        }
     }
 
     /**
@@ -47,8 +65,7 @@ public record GatewayProperties(
      *
      * @param defaultModel 当请求 model 既非别名也无法识别前缀时回退的物理模型
      */
-    public record Routing(String defaultModel) {
-    }
+    public record Routing(String defaultModel) {}
 
     /**
      * 默认 LLM（由环境变量 {@code LLM_PROVIDER}/{@code LLM_MODEL} 注入）。当请求 model 为
@@ -57,8 +74,7 @@ public record GatewayProperties(
      * @param provider 供应商名
      * @param model    物理模型名
      */
-    public record Llm(String provider, String model) {
-    }
+    public record Llm(String provider, String model) {}
 
     /**
      * 供应商接入信息。
@@ -66,24 +82,22 @@ public record GatewayProperties(
      * @param baseUrl 供应商 API 基地址
      * @param apiKey  访问密钥
      */
-    public record ProviderConfig(String baseUrl, String apiKey) {
-    }
+    public record ProviderConfig(String baseUrl, String apiKey) {}
 
     /**
      * 限流配置。
      *
-     * @param requestsPerMinute 每租户每分钟允许的请求数
+     * @param store             限流实现:memory(单机令牌桶)/ sentinel(热点参数限流)
+     * @param requestsPerMinute 每租户每分钟允许的请求数(memory 实现使用;sentinel 阈值在规则里)
      */
-    public record RateLimit(int requestsPerMinute) {
-    }
+    public record RateLimit(String store, int requestsPerMinute) {}
 
     /**
      * 配额配置。
      *
      * @param tokensPerTenant 每租户允许消耗的累计 Token 上限
      */
-    public record Quota(long tokensPerTenant) {
-    }
+    public record Quota(long tokensPerTenant) {}
 
     /**
      * 缓存配置。
@@ -101,8 +115,7 @@ public record GatewayProperties(
          * @param enabled             是否启用
          * @param similarityThreshold 命中所需的余弦相似度阈值
          */
-        public record Semantic(boolean enabled, double similarityThreshold) {
-        }
+        public record Semantic(boolean enabled, double similarityThreshold) {}
     }
 
     /**
@@ -110,8 +123,7 @@ public record GatewayProperties(
      *
      * @param sensitiveWords 敏感词词表
      */
-    public record Guardrail(List<String> sensitiveWords) {
-    }
+    public record Guardrail(List<String> sensitiveWords) {}
 
     /**
      * 容错配置。
@@ -127,7 +139,6 @@ public record GatewayProperties(
          * @param failureThreshold 连续失败多少次后打开
          * @param openSeconds      打开后冷却秒数
          */
-        public record CircuitBreakerConfig(int failureThreshold, int openSeconds) {
-        }
+        public record CircuitBreakerConfig(int failureThreshold, int openSeconds) {}
     }
 }

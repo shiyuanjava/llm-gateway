@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.springframework.stereotype.Repository;
 
-import com.llm.gateway.persistence.entity.ApiKeyEntity;
 import com.llm.gateway.persistence.mapper.ApiKeyMapper;
 import com.llm.gateway.persistence.repository.ApiKeyRecord;
 import com.llm.gateway.persistence.repository.ApiKeyRepository;
@@ -26,8 +25,8 @@ public class ApiKeyRepositoryImpl implements ApiKeyRepository {
     public List<ApiKeyRecord> findAll() {
         return mapper.selectList(null).stream()
                 .filter(e -> !Boolean.FALSE.equals(e.getEnabled()))
-                .map(e -> new ApiKeyRecord(e.getKeyHash(), e.getTenant(),
-                        splitCsv(e.getRoles()), splitCsv(e.getAllowedModels())))
+                .map(e -> new ApiKeyRecord(
+                        e.getKeyHash(), e.getTenant(), splitCsv(e.getRoles()), splitCsv(e.getAllowedModels())))
                 .toList();
     }
 

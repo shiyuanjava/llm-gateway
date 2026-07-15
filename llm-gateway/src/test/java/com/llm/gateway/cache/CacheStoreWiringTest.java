@@ -1,8 +1,5 @@
 package com.llm.gateway.cache;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -11,6 +8,9 @@ import com.llm.gateway.Fixtures;
 import com.llm.gateway.config.GatewayProperties;
 
 import tools.jackson.databind.ObjectMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * gateway.cache.store 的条件装配:memory(含缺省)装 ExactMatchCache,redis 装 RedisResponseCache,

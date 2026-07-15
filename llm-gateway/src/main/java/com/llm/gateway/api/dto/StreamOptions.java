@@ -7,5 +7,4 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *
  * @param includeUsage 为 true 时,在 [DONE] 前额外发送一个含 usage 的 chunk
  */
-public record StreamOptions(@JsonProperty("include_usage") Boolean includeUsage) {
-}
+public record StreamOptions(@JsonProperty("include_usage") Boolean includeUsage) {}

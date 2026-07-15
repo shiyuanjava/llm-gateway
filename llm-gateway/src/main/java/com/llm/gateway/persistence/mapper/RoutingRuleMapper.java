@@ -6,5 +6,4 @@ import com.llm.gateway.persistence.entity.RoutingRuleEntity;
 /**
  * {@code routing_rule} 表 Mapper。
  */
-public interface RoutingRuleMapper extends BaseMapper<RoutingRuleEntity> {
-}
+public interface RoutingRuleMapper extends BaseMapper<RoutingRuleEntity> {}

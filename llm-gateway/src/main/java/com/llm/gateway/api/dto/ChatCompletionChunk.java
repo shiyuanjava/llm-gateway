@@ -18,31 +18,31 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ChatCompletionChunk(
-        String id,
-        String object,
-        long created,
-        String model,
-        List<DeltaChoice> choices,
-        Usage usage) {
+        String id, String object, long created, String model, List<DeltaChoice> choices, Usage usage) {
 
     private static final String OBJECT = "chat.completion.chunk";
 
     /** 首帧:delta 含 role=assistant 与空 content。 */
     public static ChatCompletionChunk first(String id, long created, String model) {
-        return new ChatCompletionChunk(id, OBJECT, created, model,
-                List.of(new DeltaChoice(0, new ChatMessage("assistant", ""), null)), null);
+        return new ChatCompletionChunk(
+                id, OBJECT, created, model, List.of(new DeltaChoice(0, new ChatMessage("assistant", ""), null)), null);
     }
 
     /** 内容帧:delta 仅含本帧增量文本。 */
     public static ChatCompletionChunk content(String id, long created, String model, String text) {
-        return new ChatCompletionChunk(id, OBJECT, created, model,
-                List.of(new DeltaChoice(0, new ChatMessage(null, text), null)), null);
+        return new ChatCompletionChunk(
+                id, OBJECT, created, model, List.of(new DeltaChoice(0, new ChatMessage(null, text), null)), null);
     }
 
     /** 结束帧:delta 为空对象,携带 finish_reason。 */
     public static ChatCompletionChunk finish(String id, long created, String model, String finishReason) {
-        return new ChatCompletionChunk(id, OBJECT, created, model,
-                List.of(new DeltaChoice(0, new ChatMessage(null, null), finishReason)), null);
+        return new ChatCompletionChunk(
+                id,
+                OBJECT,
+                created,
+                model,
+                List.of(new DeltaChoice(0, new ChatMessage(null, null), finishReason)),
+                null);
     }
 
     /** usage 帧:choices 为空数组,仅在客户端要求 include_usage 时发送。 */

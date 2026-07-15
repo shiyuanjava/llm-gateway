@@ -1,12 +1,5 @@
 package com.llm.gateway.api;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,9 +17,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.llm.gateway.auth.ApiKeyService;
 import com.llm.gateway.config.ConfigRefreshService;
 
-@SpringBootTest(properties = {
-        "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef"
-})
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest(properties = {"gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef"})
 @AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TokenBillingIntegrationTest {
@@ -36,24 +34,32 @@ class TokenBillingIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
     @Autowired
     private ApiKeyService apiKeyService;
+
     @Autowired
     private ConfigRefreshService refreshService;
 
     @BeforeAll
     void setUp() {
-        jdbcTemplate.update("""
+        jdbcTemplate.update(
+                """
                 INSERT IGNORE INTO api_key (key_hash, key_prefix, tenant, roles, allowed_models, enabled)
                 VALUES (SHA2(?, 256), ?, ?, 'user', '*', 1)
-                """, TEST_KEY, TEST_KEY.substring(0, 12), TENANT);
+                """,
+                TEST_KEY,
+                TEST_KEY.substring(0, 12),
+                TENANT);
         // 兜底保证通配行存在（seed 已含；幂等）
         jdbcTemplate.update(
                 "INSERT IGNORE INTO model_pricing (model, input_per_1k, output_per_1k) VALUES ('mock*', 0, 0)");
         // 无定价的路由目标：别名 it-unpriced → mock 供应商的 zz-unpriced-model（不匹配任何定价行）
-        jdbcTemplate.update("""
+        jdbcTemplate.update(
+                """
                 INSERT IGNORE INTO routing_rule (alias, primary_provider, primary_model)
                 VALUES ('it-unpriced', 'mock', 'zz-unpriced-model')
                 """);
@@ -72,8 +78,8 @@ class TokenBillingIntegrationTest {
 
     /** 每次唯一 content，避免缓存命中干扰。 */
     private String body(String model, boolean stream) {
-        return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"b-"
-                + UUID.randomUUID() + "\"}]" + (stream ? ",\"stream\":true" : "") + "}";
+        return "{\"model\":\"" + model + "\",\"messages\":[{\"role\":\"user\",\"content\":\"b-" + UUID.randomUUID()
+                + "\"}]" + (stream ? ",\"stream\":true" : "") + "}";
     }
 
     @Test
@@ -98,6 +104,21 @@ class TokenBillingIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("pricing_not_configured"));
     }
 
+    /** 审计为异步落库:轮询直到出现符合条件的记录,最多等 5s。 */
+    private Map<String, Object> awaitRow(String sql) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (true) {
+            var rows = jdbcTemplate.queryForList(sql, TENANT);
+            if (!rows.isEmpty()) {
+                return rows.get(0);
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                throw new AssertionError("等待审计记录超时: " + sql);
+            }
+            Thread.sleep(50);
+        }
+    }
+
     @Test
     void rejectionIsAuditedWithErrorCode() throws Exception {
         mockMvc.perform(post("/v1/chat/completions")
@@ -105,9 +126,8 @@ class TokenBillingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("it-unpriced", false)))
                 .andExpect(status().isUnprocessableEntity());
-        Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT error_code, served_model, total_tokens FROM request_log WHERE tenant = ? AND status = 'error' ORDER BY id DESC LIMIT 1",
-                TENANT);
+        Map<String, Object> row = awaitRow(
+                "SELECT error_code, served_model, total_tokens FROM request_log WHERE tenant = ? AND status = 'error' ORDER BY id DESC LIMIT 1");
         assertEquals("pricing_not_configured", row.get("error_code"));
         assertNull(row.get("served_model"), "拒绝发生在调上游之前，served_model 应为空");
         assertEquals(0, ((Number) row.get("total_tokens")).intValue());
@@ -122,9 +142,8 @@ class TokenBillingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usage.total_tokens").isNumber())
                 .andExpect(jsonPath("$.usage.prompt_tokens_details").doesNotExist());
-        Integer cacheRead = jdbcTemplate.queryForObject(
-                "SELECT cache_read_tokens FROM request_log WHERE tenant = ? AND status = 'success' ORDER BY id DESC LIMIT 1",
-                Integer.class, TENANT);
-        assertEquals(0, cacheRead, "mock 无缓存，缓存列应落 0 而非 NULL");
+        Map<String, Object> row = awaitRow(
+                "SELECT cache_read_tokens FROM request_log WHERE tenant = ? AND status = 'success' ORDER BY id DESC LIMIT 1");
+        assertEquals(0, ((Number) row.get("cache_read_tokens")).intValue(), "mock 无缓存，缓存列应落 0 而非 NULL");
     }
 }

@@ -9,8 +9,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
  * @param {Function} options.blankForm 返回一份空白表单对象的工厂
  * @param {Function} [options.confirmText] (row) => 删除确认文案
  * @param {Function} [options.buildPayload] (form) => 提交前对表单做清洗,默认浅拷贝
+ * @param {Function} [options.onCreated] (data) => 创建成功后的回调(如展示一次性明文 Key);
+ *                   返回 false 可阻止默认的「提示成功 + 关弹窗」行为,由调用方自行接管
  */
-export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
+export function useCrudDialog({ api, blankForm, confirmText, buildPayload, onCreated }) {
   const loading = ref(false)
   const rows = ref([])
   const dialog = reactive({ visible: false, mode: 'create', saving: false })
@@ -20,7 +22,13 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
 
   async function load() {
     loading.value = true
-    try { rows.value = await api.list() } finally { loading.value = false }
+    try {
+      rows.value = await api.list()
+    } catch (e) {
+      /* 错误已由拦截器提示;吞掉 rejection,调用方可安全地 fire-and-forget */
+    } finally {
+      loading.value = false
+    }
   }
 
   function openCreate() {
@@ -30,7 +38,8 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
   }
 
   function openEdit(row) {
-    Object.assign(form, blankForm(), JSON.parse(JSON.stringify(row)))
+    // structuredClone 语义准确的深拷贝;JSON 往返会丢 Date/undefined 等非 JSON 字段
+    Object.assign(form, blankForm(), structuredClone(row))
     dialog.mode = 'edit'
     dialog.visible = true
   }
@@ -44,8 +53,15 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
     dialog.saving = true
     try {
       const payload = buildPayload ? buildPayload(form) : { ...form }
-      if (dialog.mode === 'create') await api.create(payload)
-      else await api.update(form.id, payload)
+      if (dialog.mode === 'create') {
+        const data = await api.create(payload)
+        if (onCreated && onCreated(data) === false) {
+          load() // 调用方接管了成功提示/弹窗(如展示一次性 Key),只刷新列表
+          return
+        }
+      } else {
+        await api.update(form.id, payload)
+      }
       ElMessage.success('保存成功')
       dialog.visible = false
       load()
@@ -57,9 +73,18 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
   }
 
   async function remove(row) {
-    const confirmed = await ElMessageBox.confirm(confirmText ? confirmText(row) : '确认删除该记录?', '删除确认', {
-      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger'
-    }).then(() => true).catch(() => false) // 取消不是错误
+    const confirmed = await ElMessageBox.confirm(
+      confirmText ? confirmText(row) : '确认删除该记录?',
+      '删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger',
+      }
+    )
+      .then(() => true)
+      .catch(() => false) // 取消不是错误
     if (!confirmed) return
     deleting[row.id] = true
     try {
@@ -73,5 +98,17 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload }) {
     }
   }
 
-  return { loading, rows, dialog, formRef, form, deleting, load, openCreate, openEdit, submit, remove }
+  return {
+    loading,
+    rows,
+    dialog,
+    formRef,
+    form,
+    deleting,
+    load,
+    openCreate,
+    openEdit,
+    submit,
+    remove,
+  }
 }

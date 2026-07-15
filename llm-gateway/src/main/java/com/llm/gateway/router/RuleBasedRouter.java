@@ -47,9 +47,13 @@ public class RuleBasedRouter implements ModelRouter, ConfigReloadable {
      */
     public RuleBasedRouter(RoutingRuleRepository routingRuleRepository, GatewayProperties properties) {
         this.routingRuleRepository = routingRuleRepository;
-        this.defaultModel = properties.routing() == null ? "deepseek-v4-pro" : properties.routing().defaultModel();
-        this.defaultLlm = properties.llm() == null ? null
-                : new ProviderTarget(properties.llm().provider(), properties.llm().model());
+        this.defaultModel = properties.routing() == null
+                ? "deepseek-v4-pro"
+                : properties.routing().defaultModel();
+        this.defaultLlm = properties.llm() == null
+                ? null
+                : new ProviderTarget(
+                        properties.llm().provider(), properties.llm().model());
         reload();
     }
 
@@ -86,8 +90,7 @@ public class RuleBasedRouter implements ModelRouter, ConfigReloadable {
                 && rule.escalateTo() != null
                 && TokenEstimator.estimate(request.messages()) > rule.maxPromptTokens();
         if (shouldEscalate) {
-            log.debug("提示词超过 {} Token，别名 [{}] 升级到 {}",
-                    rule.maxPromptTokens(), rule.alias(), rule.escalateTo());
+            log.debug("提示词超过 {} Token，别名 [{}] 升级到 {}", rule.maxPromptTokens(), rule.alias(), rule.escalateTo());
             List<ProviderTarget> escalatedFallbacks = new ArrayList<>();
             escalatedFallbacks.add(rule.primary());
             escalatedFallbacks.addAll(rule.fallbacks());

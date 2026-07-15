@@ -28,8 +28,7 @@ public record Usage(
         @JsonIgnore int cacheCreationTokens) {
 
     /** OpenAI 的 {@code prompt_tokens_details}（仅取缓存命中数，其余字段忽略）。 */
-    public record PromptTokensDetails(@JsonProperty("cached_tokens") Integer cachedTokens) {
-    }
+    public record PromptTokensDetails(@JsonProperty("cached_tokens") Integer cachedTokens) {}
 
     /**
      * 反序列化入口：兼容 OpenAI 把缓存命中数嵌在 {@code prompt_tokens_details.cached_tokens} 的形态。
@@ -47,7 +46,8 @@ public record Usage(
             @JsonProperty("total_tokens") Integer totalTokens,
             @JsonProperty("prompt_tokens_details") PromptTokensDetails promptTokensDetails) {
         int cacheRead = promptTokensDetails == null || promptTokensDetails.cachedTokens() == null
-                ? 0 : promptTokensDetails.cachedTokens();
+                ? 0
+                : promptTokensDetails.cachedTokens();
         int total = totalTokens == null ? promptTokens + completionTokens : totalTokens;
         return new Usage(promptTokens, completionTokens, total, cacheRead, 0);
     }
@@ -73,7 +73,7 @@ public record Usage(
      * @return 用量对象
      */
     public static Usage of(int promptTokens, int completionTokens, int cacheReadTokens, int cacheCreationTokens) {
-        return new Usage(promptTokens, completionTokens, promptTokens + completionTokens,
-                cacheReadTokens, cacheCreationTokens);
+        return new Usage(
+                promptTokens, completionTokens, promptTokens + completionTokens, cacheReadTokens, cacheCreationTokens);
     }
 }

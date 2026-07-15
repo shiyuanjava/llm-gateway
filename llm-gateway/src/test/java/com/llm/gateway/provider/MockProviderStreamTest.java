@@ -1,11 +1,5 @@
 package com.llm.gateway.provider;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,6 +11,12 @@ import com.llm.gateway.api.dto.ChatCompletionResponse;
 import com.llm.gateway.api.dto.ChatMessage;
 import com.llm.gateway.api.dto.Usage;
 import com.llm.gateway.exception.ProviderException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MockProviderStreamTest {
 
@@ -41,7 +41,7 @@ class MockProviderStreamTest {
 
     @Test
     void failModelThrows() {
-        assertThrows(ProviderException.class, () -> provider.chatStream(request("mock-fail"), c -> { }));
+        assertThrows(ProviderException.class, () -> provider.chatStream(request("mock-fail"), c -> {}));
     }
 
     @Test
@@ -55,8 +55,8 @@ class MockProviderStreamTest {
     @Test
     void splitPiecesDoNotBreakSurrogatePairs() {
         // 回显含 emoji(代理对)的输入,分片切点必须落在码点边界,否则 SSE 帧序列化出非法 UTF-16
-        ChatCompletionRequest emojiRequest = new ChatCompletionRequest("mock-small",
-                List.of(ChatMessage.user("你好👍👍👍👍👍👍试试")), null, null, null, true, null);
+        ChatCompletionRequest emojiRequest = new ChatCompletionRequest(
+                "mock-small", List.of(ChatMessage.user("你好👍👍👍👍👍👍试试")), null, null, null, true, null);
         List<ChatCompletionChunk> chunks = new ArrayList<>();
         provider.chatStream(emojiRequest, chunks::add);
 
@@ -65,8 +65,8 @@ class MockProviderStreamTest {
         for (ChatCompletionChunk chunk : chunks) {
             String piece = chunk.deltaContent();
             if (!piece.isEmpty()) {
-                assertFalse(Character.isHighSurrogate(piece.charAt(piece.length() - 1)),
-                        "分片不得以未配对的高代理项结尾,实际分片: " + piece);
+                assertFalse(
+                        Character.isHighSurrogate(piece.charAt(piece.length() - 1)), "分片不得以未配对的高代理项结尾,实际分片: " + piece);
             }
         }
     }
@@ -75,10 +75,14 @@ class MockProviderStreamTest {
     void defaultChatStreamReplaysNonStreamingResult() {
         // 匿名实现只提供 chat(),验证接口 default 方法的回放降级
         LlmProvider nonStreaming = new LlmProvider() {
-            @Override public String name() { return "plain"; }
-            @Override public ChatCompletionResponse chat(ChatCompletionRequest r) {
-                return ChatCompletionResponse.singleMessage(
-                        "id-1", 42, r.model(), "整段回复", "stop", Usage.of(2, 3));
+            @Override
+            public String name() {
+                return "plain";
+            }
+
+            @Override
+            public ChatCompletionResponse chat(ChatCompletionRequest r) {
+                return ChatCompletionResponse.singleMessage("id-1", 42, r.model(), "整段回复", "stop", Usage.of(2, 3));
             }
         };
         List<ChatCompletionChunk> chunks = new ArrayList<>();
@@ -93,10 +97,14 @@ class MockProviderStreamTest {
     void defaultChatStreamFoldsNullFinishReasonToStop() {
         // 上游给出非空 choice 但 finish_reason 为 null 时,结束帧不得缺失 finish_reason
         LlmProvider nonStreaming = new LlmProvider() {
-            @Override public String name() { return "plain"; }
-            @Override public ChatCompletionResponse chat(ChatCompletionRequest r) {
-                return ChatCompletionResponse.singleMessage(
-                        "id-2", 42, r.model(), "整段回复", null, Usage.of(2, 3));
+            @Override
+            public String name() {
+                return "plain";
+            }
+
+            @Override
+            public ChatCompletionResponse chat(ChatCompletionRequest r) {
+                return ChatCompletionResponse.singleMessage("id-2", 42, r.model(), "整段回复", null, Usage.of(2, 3));
             }
         };
         List<ChatCompletionChunk> chunks = new ArrayList<>();

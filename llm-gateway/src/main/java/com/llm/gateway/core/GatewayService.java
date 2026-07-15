@@ -3,6 +3,8 @@ package com.llm.gateway.core;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -35,7 +37,6 @@ import com.llm.gateway.resilience.ResilientExecutor;
 import com.llm.gateway.router.ModelRouter;
 import com.llm.gateway.router.RouteDecision;
 
-import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -66,11 +67,19 @@ public class GatewayService {
     /**
      * 注入流水线各阶段的协作组件。
      */
-    public GatewayService(ApiKeyService apiKeyService, RateLimiter rateLimiter, QuotaService quotaService,
-                          GuardrailEngine guardrailEngine, CacheService cacheService, ModelRouter router,
-                          ResilientExecutor resilientExecutor, ProviderRegistry providerRegistry,
-                          CostCalculator costCalculator, MetricsRecorder metrics,
-                          RequestLogRepository requestLogRepository, ObjectMapper objectMapper) {
+    public GatewayService(
+            ApiKeyService apiKeyService,
+            RateLimiter rateLimiter,
+            QuotaService quotaService,
+            GuardrailEngine guardrailEngine,
+            CacheService cacheService,
+            ModelRouter router,
+            ResilientExecutor resilientExecutor,
+            ProviderRegistry providerRegistry,
+            CostCalculator costCalculator,
+            MetricsRecorder metrics,
+            RequestLogRepository requestLogRepository,
+            ObjectMapper objectMapper) {
         this.apiKeyService = apiKeyService;
         this.rateLimiter = rateLimiter;
         this.quotaService = quotaService;
@@ -95,6 +104,7 @@ public class GatewayService {
     public ChatCompletionResponse complete(ChatCompletionRequest request, Principal principal) {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
+        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         try {
             // 1. 授权：该租户能否访问目标模型
             apiKeyService.authorize(principal, request.model());
@@ -118,8 +128,9 @@ public class GatewayService {
             // 6.5 计费 fail-close：无定价即拒绝，请求不打上游
             requireChainPricing(decision);
             // 7. 容错执行：重试 + 熔断 + Fallback
-            ChatCompletionResponse response = resilientExecutor.execute(decision, target ->
-                    providerRegistry.get(target.provider()).chat(request.withModel(target.model())));
+            ChatCompletionResponse response = resilientExecutor.execute(
+                    decision,
+                    target -> providerRegistry.get(target.provider()).chat(request.withModel(target.model())));
 
             // 8. 出站护栏：回复内容安全
             guardrailEngine.checkOutput(response);
@@ -143,16 +154,16 @@ public class GatewayService {
      * @param principal       鉴权得到的主体
      * @param servletResponse Servlet 响应（SSE 直写，运行在虚拟线程上）
      */
-    public void completeStream(ChatCompletionRequest request, Principal principal,
-                               HttpServletResponse servletResponse) {
+    public void completeStream(
+            ChatCompletionRequest request, Principal principal, HttpServletResponse servletResponse) {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
         context.markStreamed();
+        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         SseWriter writer = new SseWriter(servletResponse, objectMapper);
         // 可重放契约：首帧前失败会重试/换目标重新调用 invoker，聚合器必须按次尝试重建，
         // 否则重试会把上一次已累计的增量重复计入（见 StreamInvoker javadoc）
-        AtomicReference<StreamAggregator> aggregatorRef =
-                new AtomicReference<>(new StreamAggregator(guardrailEngine));
+        AtomicReference<StreamAggregator> aggregatorRef = new AtomicReference<>(new StreamAggregator(guardrailEngine));
         try {
             // 1-4. 前置检查与非流式一致：授权 → 限流 → 配额 → 入站护栏
             apiKeyService.authorize(principal, request.model());
@@ -178,30 +189,35 @@ public class GatewayService {
             RouteDecision decision = router.route(request);
             // 计费 fail-close：发生在首帧之前，依懒提交设计仍返回 JSON 错误
             requireChainPricing(decision);
-            Usage usage = resilientExecutor.executeStream(decision, target -> {
-                if (!writer.started()) {
-                    aggregatorRef.set(new StreamAggregator(guardrailEngine)); // 每次尝试重置聚合状态
-                }
-                StreamAggregator aggregator = aggregatorRef.get();
-                return providerRegistry.get(target.provider())
-                        .chatStream(request.withModel(target.model()), chunk -> {
-                            aggregator.accept(chunk); // 含增量出站护栏，命中即抛，该帧不写出
-                            writer.write(chunk);
-                        });
-            }, writer::started);
+            Usage usage = resilientExecutor.executeStream(
+                    decision,
+                    target -> {
+                        if (!writer.started()) {
+                            aggregatorRef.set(new StreamAggregator(guardrailEngine)); // 每次尝试重置聚合状态
+                        }
+                        StreamAggregator aggregator = aggregatorRef.get();
+                        return providerRegistry
+                                .get(target.provider())
+                                .chatStream(request.withModel(target.model()), chunk -> {
+                                    aggregator.accept(chunk); // 含增量出站护栏，命中即抛，该帧不写出
+                                    writer.write(chunk);
+                                });
+                    },
+                    writer::started);
             recordTtft(context, writer);
 
             // 8-10. 组装完整响应 → 写缓存 → [按需] usage 帧 → [DONE] → 计费落库
             StreamAggregator aggregator = aggregatorRef.get();
             if (usage == null) {
-                usage = Usage.of(TokenEstimator.estimate(aggregator.model(), request.messages()),
+                usage = Usage.of(
+                        TokenEstimator.estimate(aggregator.model(), request.messages()),
                         TokenEstimator.estimate(aggregator.model(), aggregator.text()));
             }
             ChatCompletionResponse assembled = aggregator.buildResponse(usage);
             cacheService.store(request, assembled);
             if (request.wantsUsageChunk()) {
-                writer.write(ChatCompletionChunk.usageOnly(
-                        assembled.id(), assembled.created(), assembled.model(), usage));
+                writer.write(
+                        ChatCompletionChunk.usageOnly(assembled.id(), assembled.created(), assembled.model(), usage));
             }
             writer.done();
             finish(context, assembled, false);
@@ -251,9 +267,11 @@ public class GatewayService {
         String id = cached.id();
         long created = cached.created();
         String model = cached.model();
-        String finishReason = cached.choices() == null || cached.choices().isEmpty()
-                || cached.choices().get(0).finishReason() == null
-                ? "stop" : cached.choices().get(0).finishReason();
+        String finishReason = cached.choices() == null
+                        || cached.choices().isEmpty()
+                        || cached.choices().get(0).finishReason() == null
+                ? "stop"
+                : cached.choices().get(0).finishReason();
         writer.write(ChatCompletionChunk.first(id, created, model));
         writer.write(ChatCompletionChunk.content(id, created, model, cached.firstContent()));
         writer.write(ChatCompletionChunk.finish(id, created, model, finishReason));
@@ -273,8 +291,12 @@ public class GatewayService {
     }
 
     /** 中途终止（断开/截断/流中失败）的落库：用估算用量尽力计费，状态区分终止原因。 */
-    private void persistPartial(ChatCompletionRequest request, GatewayContext context,
-                                StreamAggregator aggregator, String status, String errorCode) {
+    private void persistPartial(
+            ChatCompletionRequest request,
+            GatewayContext context,
+            StreamAggregator aggregator,
+            String status,
+            String errorCode) {
         try {
             String servedModel = aggregator.model() != null ? aggregator.model() : context.servedModel();
             int promptTokens = TokenEstimator.estimate(servedModel, request.messages());
@@ -284,9 +306,20 @@ public class GatewayService {
             double cost = servedModel == null || context.cacheHit() ? 0.0 : costCalculator.cost(servedModel, usage);
             long latencyMs = context.elapsedMillis(System.nanoTime());
             requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(), context.tenant(), context.requestedModel(), servedModel,
-                    promptTokens, completionTokens, usage.totalTokens(), 0, 0, cost, context.cacheHit(),
-                    status, errorCode, latencyMs));
+                    context.requestId(),
+                    context.tenant(),
+                    context.requestedModel(),
+                    servedModel,
+                    promptTokens,
+                    completionTokens,
+                    usage.totalTokens(),
+                    0,
+                    0,
+                    cost,
+                    context.cacheHit(),
+                    status,
+                    errorCode,
+                    latencyMs));
             quotaService.recordUsage(context.tenant(), usage.totalTokens());
         } catch (RuntimeException ex) {
             log.warn("写入流式中断审计记录时出错：{}", ex.getMessage());
@@ -301,8 +334,20 @@ public class GatewayService {
         try {
             long latencyMs = context.elapsedMillis(System.nanoTime());
             requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(), context.tenant(), context.requestedModel(), context.servedModel(),
-                    0, 0, 0, 0, 0, 0.0, true, "client_aborted", null, latencyMs));
+                    context.requestId(),
+                    context.tenant(),
+                    context.requestedModel(),
+                    context.servedModel(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    true,
+                    "client_aborted",
+                    null,
+                    latencyMs));
         } catch (RuntimeException ex) {
             log.warn("写入缓存回放中断审计记录时出错：{}", ex.getMessage());
         }
@@ -348,11 +393,20 @@ public class GatewayService {
         metrics.recordLatency(latencyMs);
 
         requestLogRepository.save(new RequestLogRecord(
-                context.requestId(), context.tenant(), context.requestedModel(), response.model(),
-                promptTokens, completionTokens, totalTokens,
+                context.requestId(),
+                context.tenant(),
+                context.requestedModel(),
+                response.model(),
+                promptTokens,
+                completionTokens,
+                totalTokens,
                 usage == null ? 0 : usage.cacheReadTokens(),
                 usage == null ? 0 : usage.cacheCreationTokens(),
-                cost, cacheHit, cacheHit ? "cache_hit" : "success", null, latencyMs));
+                cost,
+                cacheHit,
+                cacheHit ? "cache_hit" : "success",
+                null,
+                latencyMs));
 
         quotaService.recordUsage(context.tenant(), totalTokens);
 
@@ -370,8 +424,20 @@ public class GatewayService {
         long now = System.nanoTime();
         try {
             requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(), context.tenant(), context.requestedModel(), null,
-                    0, 0, 0, 0, 0, 0.0, false, "error", e.code(), context.elapsedMillis(now)));
+                    context.requestId(),
+                    context.tenant(),
+                    context.requestedModel(),
+                    null,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    false,
+                    "error",
+                    e.code(),
+                    context.elapsedMillis(now)));
         } catch (RuntimeException ex) {
             // 落审计失败不应掩盖原始错误
             log.warn("写入失败审计记录时出错：{}", ex.getMessage());

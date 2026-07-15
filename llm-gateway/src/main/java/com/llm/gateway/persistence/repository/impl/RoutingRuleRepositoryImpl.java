@@ -32,12 +32,13 @@ public class RoutingRuleRepositoryImpl implements RoutingRuleRepository {
     @Override
     public List<RoutingRuleRecord> findAll() {
         // 一次查全所有降级链,内存按别名分组,避免每条规则一次查询(N+1)
-        Map<String, List<ProviderTarget>> fallbacksByAlias = fallbackMapper.selectList(
-                        Wrappers.<RoutingFallbackEntity>lambdaQuery().orderByAsc(RoutingFallbackEntity::getSeq))
+        Map<String, List<ProviderTarget>> fallbacksByAlias = fallbackMapper
+                .selectList(Wrappers.<RoutingFallbackEntity>lambdaQuery().orderByAsc(RoutingFallbackEntity::getSeq))
                 .stream()
-                .collect(Collectors.groupingBy(RoutingFallbackEntity::getRuleAlias,
-                        Collectors.mapping(f -> new ProviderTarget(f.getProvider(), f.getModel()),
-                                Collectors.toList())));
+                .collect(Collectors.groupingBy(
+                        RoutingFallbackEntity::getRuleAlias,
+                        Collectors.mapping(
+                                f -> new ProviderTarget(f.getProvider(), f.getModel()), Collectors.toList())));
         return ruleMapper.selectList(null).stream()
                 .map(rule -> toRecord(rule, fallbacksByAlias.getOrDefault(rule.getAlias(), List.of())))
                 .toList();
@@ -52,7 +53,8 @@ public class RoutingRuleRepositoryImpl implements RoutingRuleRepository {
      */
     private RoutingRuleRecord toRecord(RoutingRuleEntity rule, List<ProviderTarget> fallbacks) {
         ProviderTarget primary = new ProviderTarget(rule.getPrimaryProvider(), rule.getPrimaryModel());
-        ProviderTarget escalateTo = rule.getEscalateProvider() == null ? null
+        ProviderTarget escalateTo = rule.getEscalateProvider() == null
+                ? null
                 : new ProviderTarget(rule.getEscalateProvider(), rule.getEscalateModel());
         return new RoutingRuleRecord(rule.getAlias(), primary, fallbacks, rule.getMaxPromptTokens(), escalateTo);
     }

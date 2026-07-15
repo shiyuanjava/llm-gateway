@@ -1,6 +1,31 @@
 spring:
   application:
     name: llm-gateway
+  config:
+    # optional: Nacos 不可达时用本地配置兜底启动,不失败
+    import: "optional:nacos:llm-gateway.yaml"
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      config:
+        # 文件扩展名决定 Nacos 侧配置的解析器
+        file-extension: yaml
+      discovery:
+        # 本地无 Nacos 时避免注册失败刷屏:由环境变量整体开关
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:localhost:8858}
+      # 首次请求才初始化会丢第一批指标,eager 提前建立心跳
+      eager: true
+      datasource:
+        param-flow:
+          nacos:
+            server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+            data-id: llm-gateway-param-flow-rules
+            group-id: DEFAULT_GROUP
+            data-type: json
+            rule-type: param-flow
   # 流式响应会长时间占用请求线程（生成可达分钟级），虚拟线程使其不消耗平台线程池
   threads:
     virtual:
@@ -20,10 +45,13 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # 本地无密码 Redis 留空即可;compose 部署由 REDIS_PASSWORD 注入
+      password: ${REDIS_PASSWORD:}
       timeout: 1s
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:llm_gateway}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${MYSQL_USER:root}
+    # 开发默认密码;prod profile 强制覆盖为无默认的 ${MYSQL_PASSWORD}(见 application-prod.yaml)
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
@@ -32,6 +60,10 @@ spring:
       connection-timeout: 10000
       idle-timeout: 600000
       max-lifetime: 1800000
+  flyway:
+    placeholders:
+      # 演示 Key 是否随迁移清除:开发保留(false),prod profile 置 true(见 V3 迁移脚本)
+      purge_demo_api_keys: "false"
 
 # 优雅停机:SIGTERM 后不再接受新请求,等待进行中的请求完成
 server:
@@ -64,7 +96,7 @@ management:
         include: health, info, metrics, prometheus
 
 # ===================== 网关配置 =====================
-# 说明：API Key、路由规则、计费单价已迁移到数据库（见 schema.sql / seed.sql），不再写在这里。
+# 说明：API Key、路由规则、计费单价已迁移到数据库（见 db/migration 迁移脚本），不再写在这里。
 gateway:
   # ---- 路由：默认物理模型（请求 model 无法识别时回退）----
   routing:
@@ -92,6 +124,8 @@ gateway:
 
   # ---- 限流 ----
   rate-limit:
+    # memory: 单机令牌桶(本地开发,无 Nacos 依赖)/ sentinel: 热点参数限流(规则在 Nacos)
+    store: ${GATEWAY_RATE_LIMIT_STORE:memory}
     requests-per-minute: 60
 
   # ---- 配额 ----
@@ -123,10 +157,14 @@ gateway:
   http:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
+    # 单条流式响应总时长上限(读超时只限帧间停顿,这里限整条流的 wall-clock)
+    stream-max-duration-ms: 300000
 
   # ---- 管理端鉴权 ----
   admin:
     jwt-secret: ${GATEWAY_JWT_SECRET:}
+    # 密钥轮换:换新 GATEWAY_JWT_SECRET 时把旧密钥放这里(逗号分隔),旧 token 在 TTL 内仍可验签;过渡期后清空
+    jwt-secrets-fallback: ${GATEWAY_JWT_SECRETS_FALLBACK:}
     token-ttl-minutes: 120
     bootstrap-username: ${ADMIN_USERNAME:}
     bootstrap-password: ${ADMIN_PASSWORD:}

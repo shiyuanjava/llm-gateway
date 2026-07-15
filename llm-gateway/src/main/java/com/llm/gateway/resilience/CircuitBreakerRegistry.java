@@ -20,7 +20,8 @@ public class CircuitBreakerRegistry {
      * @param properties 网关配置，提供熔断阈值与冷却时长
      */
     public CircuitBreakerRegistry(GatewayProperties properties) {
-        GatewayProperties.Resilience.CircuitBreakerConfig config = properties.resilience().circuitBreaker();
+        GatewayProperties.Resilience.CircuitBreakerConfig config =
+                properties.resilience().circuitBreaker();
         this.failureThreshold = config.failureThreshold();
         this.openMillis = config.openSeconds() * 1000L;
     }
@@ -32,7 +33,6 @@ public class CircuitBreakerRegistry {
      * @return 熔断器
      */
     public CircuitBreaker get(String provider) {
-        return breakers.computeIfAbsent(provider,
-                p -> new CircuitBreaker(p, failureThreshold, openMillis));
+        return breakers.computeIfAbsent(provider, p -> new CircuitBreaker(p, failureThreshold, openMillis));
     }
 }

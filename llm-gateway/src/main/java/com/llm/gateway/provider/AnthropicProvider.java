@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.llm.gateway.api.dto.ChatCompletionChunk;
 import com.llm.gateway.api.dto.ChatCompletionRequest;
@@ -45,6 +46,8 @@ public class AnthropicProvider implements LlmProvider {
     private final RestClient restClient;
     private final String apiKey;
     private final ObjectMapper objectMapper;
+    /** 单条流式响应的总时长上限毫秒（wall-clock），防慢速流无限占用连接。 */
+    private final long streamMaxDurationMs;
 
     /**
      * @param properties   网关配置，提供 Anthropic 的 base-url 与密钥
@@ -57,6 +60,8 @@ public class AnthropicProvider implements LlmProvider {
         String baseUrl = config == null ? "https://api.anthropic.com/v1" : config.baseUrl();
         this.objectMapper = objectMapper;
         this.restClient = RestClients.create(baseUrl, properties.http());
+        this.streamMaxDurationMs =
+                properties.http() == null ? 300_000L : properties.http().streamMaxDurationMs();
     }
 
     @Override
@@ -67,11 +72,12 @@ public class AnthropicProvider implements LlmProvider {
     @Override
     public ChatCompletionResponse chat(ChatCompletionRequest request) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new ProviderException("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
+            throw ProviderException.nonRetryable("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
         }
         try {
             String requestBody = objectMapper.writeValueAsString(toAnthropicBody(request));
-            String responseBody = restClient.post()
+            String responseBody = restClient
+                    .post()
                     .uri("/messages")
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", ANTHROPIC_VERSION)
@@ -82,10 +88,16 @@ public class AnthropicProvider implements LlmProvider {
             if (responseBody == null || responseBody.isBlank()) {
                 throw new ProviderException("Anthropic 返回空响应");
             }
-            return fromAnthropicResponse(objectMapper.readValue(responseBody, AnthropicResponse.class),
-                    request.model());
+            return fromAnthropicResponse(
+                    objectMapper.readValue(responseBody, AnthropicResponse.class), request.model());
         } catch (ProviderException e) {
             throw e;
+        } catch (RestClientResponseException e) {
+            // 按上游状态码区分瞬时故障（5xx/429/408，可重试）与确定性错误（其余 4xx，不重试）
+            throw new ProviderException(
+                    "调用 Anthropic 失败 HTTP " + e.getStatusCode() + "：" + truncate(e.getResponseBodyAsString()),
+                    e,
+                    ProviderException.isRetryableStatus(e.getStatusCode().value()));
         } catch (Exception e) {
             throw new ProviderException("调用 Anthropic 失败：" + e.getMessage(), e);
         }
@@ -101,13 +113,14 @@ public class AnthropicProvider implements LlmProvider {
     @Override
     public Usage chatStream(ChatCompletionRequest request, Consumer<ChatCompletionChunk> onChunk) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new ProviderException("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
+            throw ProviderException.nonRetryable("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
         }
         try {
             Map<String, Object> body = toAnthropicBody(request);
             body.put("stream", true);
             String requestBody = objectMapper.writeValueAsString(body);
-            return restClient.post()
+            return restClient
+                    .post()
                     .uri("/messages")
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", ANTHROPIC_VERSION)
@@ -116,9 +129,13 @@ public class AnthropicProvider implements LlmProvider {
                     .body(requestBody)
                     .exchange((clientRequest, clientResponse) -> {
                         if (clientResponse.getStatusCode().isError()) {
-                            String error = new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
-                            throw new ProviderException("Anthropic 流式调用失败 HTTP "
-                                    + clientResponse.getStatusCode() + "：" + truncate(error));
+                            String error =
+                                    new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
+                            throw new ProviderException(
+                                    "Anthropic 流式调用失败 HTTP " + clientResponse.getStatusCode() + "：" + truncate(error),
+                                    null,
+                                    ProviderException.isRetryableStatus(
+                                            clientResponse.getStatusCode().value()));
                         }
                         try (SseEventReader reader = new SseEventReader(clientResponse.getBody())) {
                             return readAnthropicStream(reader, request.model(), onChunk);
@@ -158,7 +175,12 @@ public class AnthropicProvider implements LlmProvider {
         boolean firstSent = false;
 
         SseEventReader.SseEvent event;
+        long deadlineNanos = System.nanoTime() + streamMaxDurationMs * 1_000_000L;
         while ((event = reader.next()) != null) {
+            if (System.nanoTime() > deadlineNanos) {
+                // wall-clock 上限:读超时只限帧间停顿,慢速流可绕过;超总时长主动断流(非供应商故障,不计熔断)
+                throw ProviderException.nonRetryable("Anthropic 流式响应超过总时长上限 " + streamMaxDurationMs + "ms，主动断流");
+            }
             AnthropicStreamEvent parsed = objectMapper.readValue(event.data(), AnthropicStreamEvent.class);
             switch (parsed.type() == null ? "" : parsed.type()) {
                 case "message_start" -> {
@@ -185,9 +207,11 @@ public class AnthropicProvider implements LlmProvider {
                     firstSent = true;
                 }
                 case "content_block_delta" -> {
-                    if (parsed.delta() != null && "text_delta".equals(parsed.delta().type())
+                    if (parsed.delta() != null
+                            && "text_delta".equals(parsed.delta().type())
                             && parsed.delta().text() != null) {
-                        onChunk.accept(ChatCompletionChunk.content(id, created, model, parsed.delta().text()));
+                        onChunk.accept(ChatCompletionChunk.content(
+                                id, created, model, parsed.delta().text()));
                     }
                 }
                 case "message_delta" -> {
@@ -214,17 +238,20 @@ public class AnthropicProvider implements LlmProvider {
                         onChunk.accept(ChatCompletionChunk.first(id, created, model)); // 缺首帧兜底
                     }
                     onChunk.accept(ChatCompletionChunk.finish(id, created, model, finishReason));
-                    return toGatewayUsage(inputTokens, cacheCreationTokens, cacheReadTokens,
-                            outputTokens == null ? 0 : outputTokens);
+                    return toGatewayUsage(
+                            inputTokens, cacheCreationTokens, cacheReadTokens, outputTokens == null ? 0 : outputTokens);
                 }
                 case "error" -> throw new ProviderException("Anthropic 流式返回错误：" + truncate(event.data()));
-                default -> { /* ping / content_block_start / content_block_stop 忽略 */ }
+                default -> {
+                    /* ping / content_block_start / content_block_stop 忽略 */
+                }
             }
         }
         if (firstSent) {
             onChunk.accept(ChatCompletionChunk.finish(id, created, model, finishReason)); // 截断兜底
         }
-        return outputTokens == null ? null
+        return outputTokens == null
+                ? null
                 : toGatewayUsage(inputTokens, cacheCreationTokens, cacheReadTokens, outputTokens);
     }
 
@@ -292,10 +319,10 @@ public class AnthropicProvider implements LlmProvider {
         }
         String id = response.id() == null ? "chatcmpl-anthropic" : response.id();
         String finishReason = mapStopReason(response.stopReason() == null ? "stop" : response.stopReason());
-        Usage usage = response.usage() == null ? Usage.of(0, 0) : response.usage().toUsage();
+        Usage usage =
+                response.usage() == null ? Usage.of(0, 0) : response.usage().toUsage();
         return ChatCompletionResponse.singleMessage(
-                id, Instant.now().getEpochSecond(), model,
-                text.toString(), finishReason, usage);
+                id, Instant.now().getEpochSecond(), model, text.toString(), finishReason, usage);
     }
 
     /**

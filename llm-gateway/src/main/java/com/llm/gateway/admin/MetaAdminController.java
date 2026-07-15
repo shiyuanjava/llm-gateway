@@ -29,9 +29,11 @@ public class MetaAdminController {
     /** @return 供应商列表、默认 provider/model */
     @GetMapping
     public R<Meta> meta() {
-        List<String> providers = properties.providers() == null ? List.of()
+        List<String> providers = properties.providers() == null
+                ? List.of()
                 : List.copyOf(properties.providers().keySet());
-        String defaultProvider = properties.llm() == null ? null : properties.llm().provider();
+        String defaultProvider =
+                properties.llm() == null ? null : properties.llm().provider();
         String defaultModel = properties.llm() == null ? null : properties.llm().model();
         return R.ok(new Meta(providers, defaultProvider, defaultModel));
     }
@@ -54,6 +56,5 @@ public class MetaAdminController {
      * @param defaultProvider 默认供应商
      * @param defaultModel    默认模型
      */
-    public record Meta(List<String> providers, String defaultProvider, String defaultModel) {
-    }
+    public record Meta(List<String> providers, String defaultProvider, String defaultModel) {}
 }

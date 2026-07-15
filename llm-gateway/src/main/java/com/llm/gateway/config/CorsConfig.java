@@ -27,7 +27,8 @@ public class CorsConfig {
     public FilterRegistrationBean<CorsFilter> adminCorsFilter(
             @Value("${gateway.admin.allowed-origins:}") List<String> allowedOrigins) {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        List<String> origins = allowedOrigins.stream().filter(o -> o != null && !o.isBlank()).toList();
+        List<String> origins =
+                allowedOrigins.stream().filter(o -> o != null && !o.isBlank()).toList();
         if (!origins.isEmpty()) {
             CorsConfiguration config = new CorsConfiguration();
             config.setAllowedOriginPatterns(origins);

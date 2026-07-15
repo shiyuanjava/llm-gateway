@@ -5,10 +5,11 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import com.llm.gateway.api.dto.ChatCompletionChunk;
 import com.llm.gateway.exception.ClientDisconnectedException;
 
-import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -72,10 +73,8 @@ public class SseWriter {
         if (!started) {
             throw new IllegalStateException("错误帧仅用于首帧已发出后");
         }
-        writeFrame(objectMapper.writeValueAsString(Map.of("error", Map.of(
-                "message", message == null ? "" : message,
-                "type", "gateway_error",
-                "code", code))));
+        writeFrame(objectMapper.writeValueAsString(Map.of(
+                "error", Map.of("message", message == null ? "" : message, "type", "gateway_error", "code", code))));
     }
 
     /**

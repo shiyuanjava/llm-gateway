@@ -1,5 +1,11 @@
 package com.llm.gateway.ratelimit;
 
+import org.junit.jupiter.api.Test;
+
+import com.llm.gateway.Fixtures;
+import com.llm.gateway.exception.QuotaExceededException;
+import com.llm.gateway.persistence.repository.RequestLogRepository;
+
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -7,12 +13,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import org.junit.jupiter.api.Test;
-
-import com.llm.gateway.Fixtures;
-import com.llm.gateway.exception.QuotaExceededException;
-import com.llm.gateway.persistence.repository.RequestLogRepository;
 
 class QuotaServiceTest {
 
@@ -38,8 +38,7 @@ class QuotaServiceTest {
 
         assertThatCode(() -> service.checkQuota("t1")).doesNotThrowAnyException();
         service.recordUsage("t1", 1000);
-        assertThatThrownBy(() -> service.checkQuota("t1"))
-                .isInstanceOf(QuotaExceededException.class);
+        assertThatThrownBy(() -> service.checkQuota("t1")).isInstanceOf(QuotaExceededException.class);
         verify(repo, times(1)).sumTokensByTenant("t1");
     }
 }

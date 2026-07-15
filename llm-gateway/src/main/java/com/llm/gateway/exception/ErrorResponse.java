@@ -14,8 +14,7 @@ public record ErrorResponse(ErrorDetail error) {
      * @param type    错误类型/错误码
      * @param code    细分错误码（这里与 type 复用）
      */
-    public record ErrorDetail(String message, String type, String code) {
-    }
+    public record ErrorDetail(String message, String type, String code) {}
 
     /**
      * 构造一个错误响应。

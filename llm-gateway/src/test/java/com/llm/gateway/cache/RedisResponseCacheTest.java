@@ -1,15 +1,5 @@
 package com.llm.gateway.cache;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.time.Duration;
 import java.util.Optional;
 
@@ -25,9 +15,20 @@ import com.llm.gateway.api.dto.Usage;
 
 import tools.jackson.databind.ObjectMapper;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 class RedisResponseCacheTest {
 
     private final StringRedisTemplate template = mock(StringRedisTemplate.class);
+
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOps = mock(ValueOperations.class);
     // Fixtures 默认 TTL 300s
@@ -78,9 +79,10 @@ class RedisResponseCacheTest {
     @Test
     void shouldFailOpenWhenRedisPutThrows() {
         doThrow(new RuntimeException("connection refused"))
-                .when(valueOps).set(anyString(), anyString(), eq(Duration.ofSeconds(300)));
-        ChatCompletionResponse response = ChatCompletionResponse.singleMessage(
-                "id-1", 123L, "mock-small", "hello", "stop", Usage.of(1, 1));
+                .when(valueOps)
+                .set(anyString(), anyString(), eq(Duration.ofSeconds(300)));
+        ChatCompletionResponse response =
+                ChatCompletionResponse.singleMessage("id-1", 123L, "mock-small", "hello", "stop", Usage.of(1, 1));
 
         assertDoesNotThrow(() -> cache.put("abc", response));
     }

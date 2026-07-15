@@ -1,5 +1,9 @@
 package com.llm.gateway.api;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,10 +14,6 @@ import com.llm.gateway.auth.ApiKeyAuthFilter;
 import com.llm.gateway.auth.Principal;
 import com.llm.gateway.core.GatewayService;
 import com.llm.gateway.exception.AuthenticationException;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.Valid;
 
 /**
  * 网关对外入口：OpenAI 兼容的 Chat Completions 接口。
@@ -43,8 +43,8 @@ public class ChatCompletionController {
      * @return 统一响应体（流式分支为 null）
      */
     @PostMapping("/v1/chat/completions")
-    public ChatCompletionResponse chatCompletions(@Valid @RequestBody ChatCompletionRequest request,
-                                                  HttpServletRequest http, HttpServletResponse response) {
+    public ChatCompletionResponse chatCompletions(
+            @Valid @RequestBody ChatCompletionRequest request, HttpServletRequest http, HttpServletResponse response) {
         Principal principal = (Principal) http.getAttribute(ApiKeyAuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal == null) {
             // 正常情况下不会发生（过滤器已拦截），这里做防御性兜底

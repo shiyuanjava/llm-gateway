@@ -29,19 +29,30 @@
   --space-6: 24px;
 
   --radius: 10px;
-  --shadow-card: 0 1px 2px rgba(17, 24, 39, .04), 0 4px 14px rgba(17, 24, 39, .05);
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 14px rgba(17, 24, 39, 0.05);
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body, #app {
+html,
+body,
+#app {
   height: 100%;
   margin: 0;
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
   font-size: 16px;
   line-height: 1.5;
   color: var(--app-text);
@@ -70,12 +81,20 @@ body {
   font-size: 20px;
   font-weight: 700;
   margin: 0;
-  letter-spacing: -.01em;
+  letter-spacing: -0.01em;
 }
 .page-subtitle {
   color: var(--app-text-secondary);
   font-size: 13px;
   margin-top: 2px;
+}
+@media (max-width: 768px) {
+  .page {
+    padding: var(--space-3);
+  }
+  .page-header {
+    margin-bottom: var(--space-4);
+  }
 }
 
 /* 卡片 */
@@ -92,7 +111,9 @@ body {
   align-items: center;
   margin-bottom: var(--space-4);
 }
-.toolbar .spacer { flex: 1; }
+.toolbar .spacer {
+  flex: 1;
+}
 
 .el-table {
   border-radius: var(--radius);

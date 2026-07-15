@@ -11,5 +11,4 @@ import java.util.List;
  * @param size    每页大小
  * @param <T>     记录类型
  */
-public record PageResult<T>(List<T> records, long total, long current, long size) {
-}
+public record PageResult<T>(List<T> records, long total, long current, long size) {}

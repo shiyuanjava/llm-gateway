@@ -32,15 +32,16 @@ public class AdminAuditService {
      * @param clientIp 来源 IP
      * @param status   HTTP 响应码
      */
-    public void record(String username, String action, String resource,
-                       String detail, String clientIp, int status) {
+    public void record(String username, String action, String resource, String detail, String clientIp, int status) {
         try {
             AdminAuditLogEntity entity = new AdminAuditLogEntity();
             entity.setUsername(username);
             entity.setAction(action);
             entity.setResource(resource);
-            entity.setDetail(detail == null || detail.length() <= MAX_DETAIL_LENGTH
-                    ? detail : detail.substring(0, MAX_DETAIL_LENGTH));
+            entity.setDetail(
+                    detail == null || detail.length() <= MAX_DETAIL_LENGTH
+                            ? detail
+                            : detail.substring(0, MAX_DETAIL_LENGTH));
             entity.setClientIp(clientIp);
             entity.setStatus(status);
             mapper.insert(entity);

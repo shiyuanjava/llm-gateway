@@ -1,16 +1,16 @@
 package com.llm.gateway.cache;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-
 import org.junit.jupiter.api.Test;
 
 import com.llm.gateway.api.dto.ChatCompletionResponse;
 import com.llm.gateway.api.dto.Usage;
 
 import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class CachedResponseTest {
 
@@ -23,7 +23,8 @@ class CachedResponseTest {
         String json = mapper.writeValueAsString(CachedResponse.of(original));
         // 对外协议不变:usage 内不出现拆分字段(它们平铺在信封上)
         assertFalse(json.contains("cache_read"));
-        ChatCompletionResponse restored = mapper.readValue(json, CachedResponse.class).toResponse();
+        ChatCompletionResponse restored =
+                mapper.readValue(json, CachedResponse.class).toResponse();
 
         assertEquals(4, restored.usage().cacheReadTokens());
         assertEquals(2, restored.usage().cacheCreationTokens());
@@ -38,7 +39,8 @@ class CachedResponseTest {
         ChatCompletionResponse original = response(new Usage(10, 5, 99, 4, 2));
 
         String json = mapper.writeValueAsString(CachedResponse.of(original));
-        ChatCompletionResponse restored = mapper.readValue(json, CachedResponse.class).toResponse();
+        ChatCompletionResponse restored =
+                mapper.readValue(json, CachedResponse.class).toResponse();
 
         assertEquals(99, restored.usage().totalTokens());
         assertEquals(4, restored.usage().cacheReadTokens());

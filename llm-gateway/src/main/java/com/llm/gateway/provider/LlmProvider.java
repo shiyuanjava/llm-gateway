@@ -42,9 +42,11 @@ public interface LlmProvider {
      */
     default Usage chatStream(ChatCompletionRequest request, Consumer<ChatCompletionChunk> onChunk) {
         ChatCompletionResponse full = chat(request);
-        String finishReason = full.choices() == null || full.choices().isEmpty()
-                || full.choices().get(0).finishReason() == null
-                ? "stop" : full.choices().get(0).finishReason();
+        String finishReason = full.choices() == null
+                        || full.choices().isEmpty()
+                        || full.choices().get(0).finishReason() == null
+                ? "stop"
+                : full.choices().get(0).finishReason();
         onChunk.accept(ChatCompletionChunk.first(full.id(), full.created(), full.model()));
         onChunk.accept(ChatCompletionChunk.content(full.id(), full.created(), full.model(), full.firstContent()));
         onChunk.accept(ChatCompletionChunk.finish(full.id(), full.created(), full.model(), finishReason));

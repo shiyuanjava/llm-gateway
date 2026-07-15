@@ -25,8 +25,8 @@ public class GuardrailEngine {
      * @param sensitiveWordGuardrail   敏感词护栏（入站 + 出站）
      * @param promptInjectionGuardrail 注入检测护栏（仅入站）
      */
-    public GuardrailEngine(SensitiveWordGuardrail sensitiveWordGuardrail,
-                           PromptInjectionGuardrail promptInjectionGuardrail) {
+    public GuardrailEngine(
+            SensitiveWordGuardrail sensitiveWordGuardrail, PromptInjectionGuardrail promptInjectionGuardrail) {
         this.inputGuardrails = List.of(sensitiveWordGuardrail, promptInjectionGuardrail);
         this.outputGuardrails = List.of(sensitiveWordGuardrail);
     }
@@ -74,8 +74,7 @@ public class GuardrailEngine {
         for (Guardrail guardrail : guardrails) {
             GuardrailResult result = guardrail.check(text);
             if (!result.allowed()) {
-                throw new GuardrailException(
-                        phase + "内容被护栏 [" + guardrail.name() + "] 拦截：" + result.reason());
+                throw new GuardrailException(phase + "内容被护栏 [" + guardrail.name() + "] 拦截：" + result.reason());
             }
         }
     }

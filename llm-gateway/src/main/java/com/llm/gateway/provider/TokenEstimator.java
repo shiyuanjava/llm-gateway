@@ -32,8 +32,7 @@ public final class TokenEstimator {
     private static final Encoding CL100K = REGISTRY.getEncoding(EncodingType.CL100K_BASE);
     private static final Encoding O200K = REGISTRY.getEncoding(EncodingType.O200K_BASE);
 
-    private TokenEstimator() {
-    }
+    private TokenEstimator() {}
 
     /**
      * 估算单段文本的 Token 数（无模型上下文，按 O200K 计）。
@@ -94,8 +93,7 @@ public final class TokenEstimator {
      * @return 编码类型
      */
     static EncodingType encodingTypeFor(String model) {
-        if (model != null && (model.startsWith("gpt-3.5")
-                || model.equals("gpt-4") || model.startsWith("gpt-4-"))) {
+        if (model != null && (model.startsWith("gpt-3.5") || model.equals("gpt-4") || model.startsWith("gpt-4-"))) {
             return EncodingType.CL100K_BASE;
         }
         return EncodingType.O200K_BASE;

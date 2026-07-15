@@ -5,5 +5,4 @@ package com.llm.gateway.auth.admin;
  *
  * @param username 管理员用户名
  */
-public record AdminPrincipal(String username) {
-}
+public record AdminPrincipal(String username) {}

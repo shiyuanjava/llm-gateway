@@ -1,10 +1,5 @@
 package com.llm.gateway.auth.admin;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,11 +7,17 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = {
-        "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-        "gateway.admin.bootstrap-username=it-admin",
-        "gateway.admin.bootstrap-password=it-admin-pass"
-})
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest(
+        properties = {
+            "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
+            "gateway.admin.bootstrap-username=it-admin",
+            "gateway.admin.bootstrap-password=it-admin-pass"
+        })
 @AutoConfigureMockMvc
 class AdminJwtFilterTest {
 
@@ -41,8 +42,7 @@ class AdminJwtFilterTest {
     @Test
     void validTokenPasses() throws Exception {
         String token = issueToken();
-        mockMvc.perform(get("/admin/auth/me")
-                        .header("Authorization", "Bearer " + token))
+        mockMvc.perform(get("/admin/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
     }
@@ -51,8 +51,7 @@ class AdminJwtFilterTest {
         // 不依赖数据库中的账号:直接用测试密钥签发一个合法 JWT,
         // 过滤器只验签不查库,足以覆盖「合法 token → 放行 → @RequestAttribute 注入」链路。
         javax.crypto.SecretKey key = io.jsonwebtoken.security.Keys.hmacShaKeyFor(
-                "test-secret-0123456789abcdef0123456789abcdef"
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                "test-secret-0123456789abcdef0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         long now = System.currentTimeMillis();
         return io.jsonwebtoken.Jwts.builder()
                 .subject("it-admin")

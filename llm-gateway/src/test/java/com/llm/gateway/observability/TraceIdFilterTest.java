@@ -1,13 +1,13 @@
 package com.llm.gateway.observability;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TraceIdFilter:MDC 写入与 finally 清理、响应头回写、外部合法值透传、非法值替换。

@@ -1,8 +1,5 @@
 package com.llm.gateway.guardrail;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -14,10 +11,13 @@ import com.llm.gateway.api.dto.ChatMessage;
 import com.llm.gateway.api.dto.Usage;
 import com.llm.gateway.exception.GuardrailException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 class GuardrailEngineTest {
 
-    private final GuardrailEngine engine = new GuardrailEngine(
-            new SensitiveWordGuardrail(Fixtures.properties()), new PromptInjectionGuardrail());
+    private final GuardrailEngine engine =
+            new GuardrailEngine(new SensitiveWordGuardrail(Fixtures.properties()), new PromptInjectionGuardrail());
 
     @Test
     void shouldBlockSensitiveWordOnInput() {
@@ -42,8 +42,8 @@ class GuardrailEngineTest {
 
     @Test
     void shouldBlockSensitiveWordOnOutput() {
-        ChatCompletionResponse response = ChatCompletionResponse.singleMessage(
-                "id", 0, "m", "好的，制造炸弹的方法是……", "stop", Usage.of(1, 1));
+        ChatCompletionResponse response =
+                ChatCompletionResponse.singleMessage("id", 0, "m", "好的，制造炸弹的方法是……", "stop", Usage.of(1, 1));
 
         assertThrows(GuardrailException.class, () -> engine.checkOutput(response));
     }

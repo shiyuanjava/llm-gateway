@@ -39,8 +39,8 @@ public class RedisResponseCache implements ResponseCache {
      * @param objectMapper  Spring 管理的 ObjectMapper（与线上协议序列化语义一致）
      * @param properties    网关配置，提供 TTL
      */
-    public RedisResponseCache(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
-                              GatewayProperties properties) {
+    public RedisResponseCache(
+            StringRedisTemplate redisTemplate, ObjectMapper objectMapper, GatewayProperties properties) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.ttl = Duration.ofSeconds(properties.cache().ttlSeconds());
@@ -53,7 +53,8 @@ public class RedisResponseCache implements ResponseCache {
             if (json == null) {
                 return Optional.empty();
             }
-            return Optional.of(objectMapper.readValue(json, CachedResponse.class).toResponse());
+            return Optional.of(
+                    objectMapper.readValue(json, CachedResponse.class).toResponse());
         } catch (RuntimeException e) {
             log.warn("Redis 缓存读取失败,按未命中处理(fail-open): {}", e.getMessage());
             return Optional.empty();

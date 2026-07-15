@@ -1,17 +1,46 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, User } from '@element-plus/icons-vue'
+import { Refresh, User, Fold, Expand } from '@element-plus/icons-vue'
 import { metaApi } from './api'
-import { getUsername, clearSession } from './auth/session'
+import { clearSession, currentUsername } from './auth/session'
 
 const route = useRoute()
 const router = useRouter()
 
+// 侧边栏折叠:localStorage 记住手动偏好;不可用时(隐私模式)退化为内存态
+const COLLAPSE_KEY = 'ui:sidebar-collapsed'
+
+function readStoredCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const collapsed = ref(readStoredCollapsed())
+
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+  try {
+    localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
+  } catch {
+    /* 仅内存态 */
+  }
+}
+
+// ≤992px 自动折叠;回宽屏恢复手动偏好。自动折叠不写 localStorage,避免污染用户设置
+const narrowQuery = window.matchMedia('(max-width: 992px)')
+
+function onNarrowChange(e) {
+  collapsed.value = e.matches ? true : readStoredCollapsed()
+}
+
 const isLogin = computed(() => route.path === '/login')
-// 依赖 route.path:登录/退出都会切路由,借此让用户名重新读取 localStorage
-const username = computed(() => (route.path, getUsername()))
+// 响应式用户名:登录/登出时由 session.js 更新
+const username = currentUsername
 
 function logout() {
   clearSession()
@@ -27,7 +56,7 @@ const menus = computed(() =>
 
 const current = computed(() => ({
   title: route.meta?.title || '',
-  subtitle: route.meta?.subtitle || ''
+  subtitle: route.meta?.subtitle || '',
 }))
 
 const meta = ref({ providers: [], defaultProvider: '', defaultModel: '' })
@@ -46,40 +75,73 @@ async function reloadConfig() {
   try {
     await metaApi.reload()
     ElMessage.success('配置缓存已刷新')
+  } catch (e) {
+    /* 错误已由拦截器提示;吞掉 rejection,点击回调可安全地 fire-and-forget */
   } finally {
     reloading.value = false
   }
 }
 
-onMounted(() => { if (!isLogin.value) loadMeta() })
-watch(isLogin, (v) => { if (!v) loadMeta() })
+onMounted(() => {
+  if (!isLogin.value) loadMeta()
+  if (narrowQuery.matches) collapsed.value = true
+  narrowQuery.addEventListener('change', onNarrowChange)
+})
+
+onBeforeUnmount(() => {
+  narrowQuery.removeEventListener('change', onNarrowChange)
+})
+watch(isLogin, (v) => {
+  if (!v) loadMeta()
+})
 </script>
 
 <template>
   <router-view v-if="isLogin" />
   <el-container v-else class="layout">
-    <el-aside width="232px" class="sidebar">
+    <el-aside
+      :width="collapsed ? '64px' : '232px'"
+      class="sidebar"
+      :class="{ 'is-collapsed': collapsed }"
+    >
       <div class="brand">
-        <div class="brand-mark"><el-icon :size="20"><Cpu /></el-icon></div>
-        <div class="brand-text">
+        <div class="brand-mark">
+          <el-icon :size="20"><Cpu /></el-icon>
+        </div>
+        <div v-if="!collapsed" class="brand-text">
           <div class="brand-name">LLM Gateway</div>
           <div class="brand-sub">控制台</div>
         </div>
       </div>
 
-      <el-menu :default-active="route.path" router class="menu" :collapse="false">
+      <el-menu
+        :default-active="route.path"
+        router
+        class="menu"
+        :collapse="collapsed"
+        :collapse-transition="false"
+      >
         <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
           <el-icon><component :is="m.icon" /></el-icon>
           <span>{{ m.title }}</span>
         </el-menu-item>
       </el-menu>
 
-      <div class="sidebar-foot">
+      <div v-if="!collapsed" class="sidebar-foot">
         <div class="foot-label">默认模型</div>
         <div class="foot-value tabular-nums">
           {{ meta.defaultProvider }} / {{ meta.defaultModel }}
         </div>
       </div>
+
+      <button
+        class="collapse-toggle"
+        :title="collapsed ? '展开菜单' : '收起菜单'"
+        @click="toggleSidebar"
+      >
+        <el-icon><Expand v-if="collapsed" /><Fold v-else /></el-icon>
+        <span v-if="!collapsed">收起</span>
+      </button>
     </el-aside>
 
     <el-container>
@@ -89,11 +151,11 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
           <div class="header-sub">{{ current.subtitle }}</div>
         </div>
         <div class="header-actions">
-          <el-tag type="info" effect="plain" round>
+          <el-tag type="info" effect="plain" round class="provider-tag">
             供应商：{{ meta.providers.join(' / ') }}
           </el-tag>
           <el-button :loading="reloading" @click="reloadConfig">
-            <el-icon><Refresh /></el-icon>&nbsp;刷新配置
+            <el-icon><Refresh /></el-icon><span class="hide-sm">&nbsp;刷新配置</span>
           </el-button>
           <el-dropdown @command="logout">
             <span class="user-chip">
@@ -120,13 +182,17 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
 </template>
 
 <style scoped>
-.layout { height: 100vh; }
+.layout {
+  height: 100vh;
+}
 
 .sidebar {
   background: var(--app-sidebar-bg);
   display: flex;
   flex-direction: column;
   border-right: none;
+  transition: width 0.2s ease;
+  overflow: hidden;
 }
 .brand {
   display: flex;
@@ -136,14 +202,24 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   color: #fff;
 }
 .brand-mark {
-  width: 38px; height: 38px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
-  display: grid; place-items: center;
+  display: grid;
+  place-items: center;
   background: linear-gradient(135deg, var(--el-color-primary), #8b5cf6);
   color: #fff;
 }
-.brand-name { font-weight: 700; font-size: 15px; line-height: 1.1; }
-.brand-sub { font-size: 12px; color: var(--app-sidebar-text); margin-top: 2px; }
+.brand-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.1;
+}
+.brand-sub {
+  font-size: 12px;
+  color: var(--app-sidebar-text);
+  margin-top: 2px;
+}
 
 .menu {
   flex: 1;
@@ -165,14 +241,58 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   background: var(--el-color-primary);
   color: #fff;
 }
-.menu :deep(.el-menu-item.is-active .el-icon) { color: #fff; }
+.menu :deep(.el-menu-item.is-active .el-icon) {
+  color: #fff;
+}
 
 .sidebar-foot {
   padding: 14px 20px;
-  border-top: 1px solid rgba(255, 255, 255, .08);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.foot-label { font-size: 11px; color: #7f86a3; text-transform: uppercase; letter-spacing: .04em; }
-.foot-value { font-size: 13px; color: #e6e8f2; margin-top: 4px; word-break: break-all; }
+.foot-label {
+  font-size: 11px;
+  color: #7f86a3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.foot-value {
+  font-size: 13px;
+  color: #e6e8f2;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+/* 折叠态:brand 居中只留 logo,菜单收窄 */
+.is-collapsed .brand {
+  justify-content: center;
+  padding: 20px 0 16px;
+}
+.is-collapsed .menu {
+  padding: 6px 8px;
+}
+.menu:not(.el-menu--collapse) {
+  width: 100%;
+}
+
+.collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--app-sidebar-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+.collapse-toggle:hover {
+  background: var(--app-sidebar-bg-soft);
+  color: #fff;
+}
 
 .header {
   height: 68px;
@@ -183,10 +303,27 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   justify-content: space-between;
   padding: 0 24px;
 }
-.header-title { font-size: 17px; font-weight: 700; }
-.header-sub { font-size: 12px; color: var(--app-text-secondary); margin-top: 2px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.user-chip { display: inline-flex; align-items: center; cursor: pointer; color: var(--app-text-secondary); font-size: 14px; }
+.header-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.header-sub {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  margin-top: 2px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--app-text-secondary);
+  font-size: 14px;
+}
 
 .main {
   background: var(--app-bg);
@@ -194,6 +331,26 @@ watch(isLogin, (v) => { if (!v) loadMeta() })
   overflow-y: auto;
 }
 
-.fade-enter-active, .fade-leave-active { transition: opacity .18s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 0 12px;
+  }
+  .header-sub,
+  .provider-tag,
+  .hide-sm {
+    display: none;
+  }
+  .header-actions {
+    gap: 8px;
+  }
+}
 </style>

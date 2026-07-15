@@ -1,10 +1,5 @@
 package com.llm.gateway.observability;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +9,11 @@ import com.llm.gateway.api.dto.Usage;
 import com.llm.gateway.exception.PricingNotConfiguredException;
 import com.llm.gateway.persistence.repository.PricingRecord;
 import com.llm.gateway.persistence.repository.PricingRepository;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CostCalculatorTest {
 
@@ -45,14 +45,12 @@ class CostCalculatorTest {
     @Test
     void shouldPriceCacheReadSeparately() {
         // prompt=2000 内含缓存读 1000：非缓存 1000×0.015/1k + 缓存读 1000×0.0015/1k
-        assertEquals(0.015 + 0.0015,
-                calculator.cost("claude-opus-4-8", Usage.of(2000, 0, 1000, 0)), 1e-9);
+        assertEquals(0.015 + 0.0015, calculator.cost("claude-opus-4-8", Usage.of(2000, 0, 1000, 0)), 1e-9);
     }
 
     @Test
     void shouldPriceCacheWriteSeparately() {
-        assertEquals(0.015 + 0.01875,
-                calculator.cost("claude-opus-4-8", Usage.of(2000, 0, 0, 1000)), 1e-9);
+        assertEquals(0.015 + 0.01875, calculator.cost("claude-opus-4-8", Usage.of(2000, 0, 0, 1000)), 1e-9);
     }
 
     @Test
@@ -89,8 +87,7 @@ class CostCalculatorTest {
     @Test
     void bareWildcardActsAsGlobalCatchAll() {
         // 裸 "*" 兜底行：任何未知模型命中兜底价，requirePricing 不再拦截（reload 会 WARN）
-        PricingRepository withCatchAll = () -> List.of(
-                new PricingRecord("*", 0.01, 0.02, null, null));
+        PricingRepository withCatchAll = () -> List.of(new PricingRecord("*", 0.01, 0.02, null, null));
         CostCalculator catchAll = new CostCalculator(withCatchAll);
 
         assertDoesNotThrow(() -> catchAll.requirePricing("totally-unknown"));

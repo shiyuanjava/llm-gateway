@@ -1,23 +1,22 @@
 package com.llm.gateway.api.dto;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import tools.jackson.databind.ObjectMapper;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 class ChatCompletionRequestTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static ChatCompletionRequest request(Boolean stream, StreamOptions streamOptions) {
-        return new ChatCompletionRequest(
-                "m", List.of(ChatMessage.user("x")), 0.7, 0.9, 128, stream, streamOptions);
+        return new ChatCompletionRequest("m", List.of(ChatMessage.user("x")), 0.7, 0.9, 128, stream, streamOptions);
     }
 
     @Test

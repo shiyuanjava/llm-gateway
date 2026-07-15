@@ -15,8 +15,7 @@ import com.llm.gateway.api.dto.ChatMessage;
  */
 public final class CacheKey {
 
-    private CacheKey() {
-    }
+    private CacheKey() {}
 
     /**
      * 为请求生成精确缓存键。
@@ -32,7 +31,12 @@ public final class CacheKey {
         canonical.append("maxTokens=").append(request.maxTokens()).append('|');
         canonical.append("messages=");
         for (ChatMessage message : request.messages()) {
-            canonical.append('[').append(message.role()).append(':').append(message.content()).append(']');
+            canonical
+                    .append('[')
+                    .append(message.role())
+                    .append(':')
+                    .append(message.content())
+                    .append(']');
         }
         return sha256(canonical.toString());
     }

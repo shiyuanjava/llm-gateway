@@ -16,11 +16,11 @@ public final class ApiKeyGenerator {
     public static final String KEY_PREFIX = "sk-gw-";
     /** 展示用前缀长度（sk-gw- + 6 位随机）。 */
     private static final int DISPLAY_PREFIX_LENGTH = 12;
+
     private static final int RANDOM_BYTES = 16;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private ApiKeyGenerator() {
-    }
+    private ApiKeyGenerator() {}
 
     /** @return 新的随机 API Key（sk-gw- + 32 位 hex） */
     public static String generate() {

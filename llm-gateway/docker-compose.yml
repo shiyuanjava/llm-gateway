@@ -1,6 +1,6 @@
 # LLM Gateway 单机部署:MySQL + Redis + 网关 + 管理台(nginx 同源反代)。
 # 使用:cp .env.example .env && 编辑必填项 && docker compose up -d --build
-# 前置:前端仓库 llm-gateway-ui 与本仓库同级(build context ../llm-gateway-ui)。
+# 前置:前端目录 llm-gateway-ui 与本目录同级、同属一个仓库(build context ../llm-gateway-ui)。
 services:
   mysql:
     image: mysql:8
@@ -10,9 +10,6 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-      # 首次启动自动建表/灌种子数据(仅数据卷为空时执行)
-      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql:ro
-      - ./src/main/resources/seed.sql:/docker-entrypoint-initdb.d/2-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
@@ -22,15 +19,60 @@ services:
 
   redis:
     image: redis:7-alpine
+    environment:
+      # healthcheck 的 shell 里引用;requirepass 由 compose 在 command 里插值
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
     # 纯缓存:不持久化(丢了就丢了),内存上限 + LRU 淘汰。
-    # 刻意不映射宿主机端口:仅容器网络内可达(与 gateway 9090 同一策略),故不设密码
+    # 刻意不映射宿主机端口:仅容器网络内可达;即便如此仍设密码作纵深防御,不裸奔靠网络隔离兜底
     command: ["redis-server", "--save", "", "--appendonly", "no",
-              "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+              "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru",
+              "--requirepass", "${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 12
+    restart: unless-stopped
+
+  nacos:
+    image: nacos/nacos-server:v3.1.1
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLED: "false"
+      # v3 镜像启动脚本强制要求以下三项非空(即便 auth 关闭);本地单机用固定占位值
+      NACOS_AUTH_TOKEN: "SecretKey012345678901234567890123456789012345678901234567890123456789"
+      NACOS_AUTH_IDENTITY_KEY: "nacos-local"
+      NACOS_AUTH_IDENTITY_VALUE: "nacos-local"
+      TZ: Asia/Shanghai
+    ports:
+      - "8848:8848"   # 客户端 HTTP API
+      - "8850:8080"   # v3 控制台(浏览器访问 http://localhost:8850)
+    volumes:
+      - nacos-data:/home/nacos/data
+    healthcheck:
+      # v3 起 readiness 在控制台端口 8080,不在 8848
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v3/console/health/readiness || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    restart: unless-stopped
+
+  # 首启把运营参数与限流规则发布到 Nacos(发布是覆盖语义,重复执行幂等)
+  nacos-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      nacos:
+        condition: service_healthy
+    volumes:
+      - ./deploy/nacos-init/init.sh:/init.sh:ro
+    entrypoint: ["sh", "/init.sh"]
+    restart: "no"
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:latest
+    ports:
+      - "8858:8858"
     restart: unless-stopped
 
   gateway:
@@ -40,6 +82,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      nacos:
+        condition: service_healthy
+      nacos-init:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: prod
       MYSQL_HOST: mysql
@@ -50,6 +96,7 @@ services:
       GATEWAY_CACHE_STORE: redis
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
       GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET:?请在 .env 设置 GATEWAY_JWT_SECRET(至少 32 字符)}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -57,6 +104,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GATEWAY_ADMIN_ALLOWED_ORIGINS: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:-}
+      NACOS_SERVER_ADDR: nacos:8848
+      SENTINEL_DASHBOARD: sentinel-dashboard:8858
+      GATEWAY_RATE_LIMIT_STORE: sentinel
+      # nacos-client 默认往 ${user.home}/logs 写日志,非 root 用户不可写会让 Logback 初始化直接失败
+      JAVA_TOOL_OPTIONS: "-DJM.LOG.PATH=/app/logs/nacos -Dnacos.logging.default.config.enabled=false -Dcsp.sentinel.log.dir=/app/logs/sentinel"
       TZ: Asia/Shanghai
     # 刻意不映射 8080/9090 到宿主机:业务流量经 ui 反代,Actuator 仅容器网络内可达
     healthcheck:
@@ -79,3 +131,4 @@ services:
 
 volumes:
   mysql-data:
+  nacos-data:

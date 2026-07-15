@@ -1,10 +1,5 @@
 package com.llm.gateway.cache;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -15,6 +10,11 @@ import com.llm.gateway.api.dto.ChatCompletionRequest;
 import com.llm.gateway.api.dto.ChatCompletionResponse;
 import com.llm.gateway.api.dto.ChatMessage;
 import com.llm.gateway.api.dto.Usage;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExactMatchCacheTest {
 
@@ -55,12 +55,12 @@ class ExactMatchCacheTest {
 
     @Test
     void shouldProduceSameKeyForSameRequestAndDifferForParams() {
-        ChatCompletionRequest a = new ChatCompletionRequest(
-                "gpt-4o", List.of(ChatMessage.user("hi")), 0.0, null, null, null, null);
-        ChatCompletionRequest b = new ChatCompletionRequest(
-                "gpt-4o", List.of(ChatMessage.user("hi")), 0.0, null, null, null, null);
-        ChatCompletionRequest different = new ChatCompletionRequest(
-                "gpt-4o", List.of(ChatMessage.user("hi")), 0.9, null, null, null, null);
+        ChatCompletionRequest a =
+                new ChatCompletionRequest("gpt-4o", List.of(ChatMessage.user("hi")), 0.0, null, null, null, null);
+        ChatCompletionRequest b =
+                new ChatCompletionRequest("gpt-4o", List.of(ChatMessage.user("hi")), 0.0, null, null, null, null);
+        ChatCompletionRequest different =
+                new ChatCompletionRequest("gpt-4o", List.of(ChatMessage.user("hi")), 0.9, null, null, null, null);
 
         assertEquals(CacheKey.of(a), CacheKey.of(b));
         assertNotEquals(CacheKey.of(a), CacheKey.of(different));

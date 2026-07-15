@@ -1,9 +1,5 @@
 package com.llm.gateway.provider;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,21 +16,25 @@ import com.llm.gateway.provider.sse.SseEventReader;
 
 import tools.jackson.databind.ObjectMapper;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 class AnthropicStreamReadTest {
 
-    private final AnthropicProvider provider =
-            new AnthropicProvider(Fixtures.properties(), new ObjectMapper());
+    private final AnthropicProvider provider = new AnthropicProvider(Fixtures.properties(), new ObjectMapper());
 
     private Usage read(String sse, List<ChatCompletionChunk> sink) throws IOException {
-        try (SseEventReader reader = new SseEventReader(
-                new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8)))) {
+        try (SseEventReader reader =
+                new SseEventReader(new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8)))) {
             return provider.readAnthropicStream(reader, "claude-opus-4-8", sink::add);
         }
     }
 
     @Test
     void translatesAnthropicEventsToOpenAiChunks() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_01","role":"assistant","usage":{"input_tokens":25,"output_tokens":1}}}
 
@@ -75,7 +75,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void errorEventThrowsProviderException() {
-        String sse = """
+        String sse =
+                """
                 event: error
                 data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
 
@@ -85,7 +86,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void truncatedStreamStillEmitsFinishAndReturnsKnownUsage() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_02","usage":{"input_tokens":10,"output_tokens":1}}}
 
@@ -96,15 +98,15 @@ class AnthropicStreamReadTest {
         List<ChatCompletionChunk> chunks = new ArrayList<>();
         Usage usage = read(sse, chunks);
 
-        assertEquals("stop", chunks.get(chunks.size() - 1).choices().get(0).finishReason(),
-                "流截断时补发结束帧,保证客户端拿到合法收尾");
+        assertEquals("stop", chunks.get(chunks.size() - 1).choices().get(0).finishReason(), "流截断时补发结束帧,保证客户端拿到合法收尾");
         assertEquals(10, usage.promptTokens());
         assertEquals(1, usage.completionTokens(), "message_start 携带的 output_tokens 作为已知下限");
     }
 
     @Test
     void truncatedStreamWithUnknownOutputReturnsNullUsage() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_03","usage":{"input_tokens":10}}}
 
@@ -121,7 +123,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void maxTokensStopReasonMapsToLength() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_04","usage":{"input_tokens":5,"output_tokens":1}}}
 
@@ -138,14 +141,14 @@ class AnthropicStreamReadTest {
         List<ChatCompletionChunk> chunks = new ArrayList<>();
         Usage usage = read(sse, chunks);
 
-        assertEquals("length", chunks.get(chunks.size() - 1).choices().get(0).finishReason(),
-                "max_tokens 映射为 length");
+        assertEquals("length", chunks.get(chunks.size() - 1).choices().get(0).finishReason(), "max_tokens 映射为 length");
         assertEquals(Usage.of(5, 8), usage);
     }
 
     @Test
     void errorEventAfterContentFramesStillThrows() {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_05","usage":{"input_tokens":5,"output_tokens":1}}}
 
@@ -163,7 +166,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void messageStopWithoutStartStillEmitsFirstFrame() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_stop
                 data: {"type":"message_stop"}
 
@@ -178,7 +182,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void capturesCacheTokensAndNormalizesPromptByAddition() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_c","usage":{"input_tokens":20,"output_tokens":1,"cache_creation_input_tokens":100,"cache_read_input_tokens":300}}}
 
@@ -202,7 +207,8 @@ class AnthropicStreamReadTest {
 
     @Test
     void truncatedStreamWithCacheStillNormalizesPromptByAddition() throws IOException {
-        String sse = """
+        String sse =
+                """
                 event: message_start
                 data: {"type":"message_start","message":{"id":"msg_t","usage":{"input_tokens":20,"output_tokens":1,"cache_creation_input_tokens":100,"cache_read_input_tokens":300}}}
 

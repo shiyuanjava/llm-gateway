@@ -18,7 +18,8 @@ public class SensitiveWordGuardrail implements Guardrail {
      * @param properties 网关配置，提供敏感词词表
      */
     public SensitiveWordGuardrail(GatewayProperties properties) {
-        List<String> words = properties.guardrail() == null ? null : properties.guardrail().sensitiveWords();
+        List<String> words =
+                properties.guardrail() == null ? null : properties.guardrail().sensitiveWords();
         this.sensitiveWords = words == null ? List.of() : List.copyOf(words);
     }
 

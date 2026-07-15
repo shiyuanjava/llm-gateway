@@ -44,15 +44,14 @@ public class LogAdminController {
      * @return 分页结果
      */
     @GetMapping
-    public R<PageResult<RequestLogEntity>> list(@RequestParam(required = false) String tenant,
-                                                @RequestParam(required = false) String status,
-                                                @RequestParam(required = false) String model,
-                                                @RequestParam(required = false)
-                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-                                                @RequestParam(required = false)
-                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
-                                                @RequestParam(defaultValue = "1") long page,
-                                                @RequestParam(defaultValue = "20") long size) {
+    public R<PageResult<RequestLogEntity>> list(
+            @RequestParam(required = false) String tenant,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String model,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") long size) {
         QueryWrapper<RequestLogEntity> query = new QueryWrapper<>();
         if (StringUtils.hasText(tenant)) {
             query.eq("tenant", tenant);
@@ -83,7 +82,8 @@ public class LogAdminController {
     @GetMapping("/stats")
     public R<List<StatRow>> stats() {
         QueryWrapper<RequestLogEntity> query = new QueryWrapper<>();
-        query.select("tenant",
+        query.select(
+                "tenant",
                 "COUNT(*) AS requests",
                 "IFNULL(SUM(total_tokens), 0) AS tokens",
                 // 成本=上游真实成本口径：缓存命中行没有上游调用，不计入
@@ -91,9 +91,8 @@ public class LogAdminController {
                 "SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS cache_hits");
         query.groupBy("tenant");
 
-        List<StatRow> rows = mapper.selectMaps(query).stream()
-                .map(this::toStatRow)
-                .toList();
+        List<StatRow> rows =
+                mapper.selectMaps(query).stream().map(this::toStatRow).toList();
         return R.ok(rows);
     }
 
@@ -131,6 +130,5 @@ public class LogAdminController {
      * @param cost      上游成本（美元，不含缓存命中行）
      * @param cacheHits 缓存命中次数
      */
-    public record StatRow(String tenant, long requests, long tokens, double cost, long cacheHits) {
-    }
+    public record StatRow(String tenant, long requests, long tokens, double cost, long cacheHits) {}
 }
