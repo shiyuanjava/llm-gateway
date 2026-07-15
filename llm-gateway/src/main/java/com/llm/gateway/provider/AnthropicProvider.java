@@ -46,6 +46,8 @@ public class AnthropicProvider implements LlmProvider {
     private final RestClient restClient;
     private final String apiKey;
     private final ObjectMapper objectMapper;
+    /** 单条流式响应的总时长上限毫秒（wall-clock），防慢速流无限占用连接。 */
+    private final long streamMaxDurationMs;
 
     /**
      * @param properties   网关配置，提供 Anthropic 的 base-url 与密钥
@@ -58,6 +60,8 @@ public class AnthropicProvider implements LlmProvider {
         String baseUrl = config == null ? "https://api.anthropic.com/v1" : config.baseUrl();
         this.objectMapper = objectMapper;
         this.restClient = RestClients.create(baseUrl, properties.http());
+        this.streamMaxDurationMs =
+                properties.http() == null ? 300_000L : properties.http().streamMaxDurationMs();
     }
 
     @Override
@@ -171,7 +175,12 @@ public class AnthropicProvider implements LlmProvider {
         boolean firstSent = false;
 
         SseEventReader.SseEvent event;
+        long deadlineNanos = System.nanoTime() + streamMaxDurationMs * 1_000_000L;
         while ((event = reader.next()) != null) {
+            if (System.nanoTime() > deadlineNanos) {
+                // wall-clock 上限:读超时只限帧间停顿,慢速流可绕过;超总时长主动断流(非供应商故障,不计熔断)
+                throw ProviderException.nonRetryable("Anthropic 流式响应超过总时长上限 " + streamMaxDurationMs + "ms，主动断流");
+            }
             AnthropicStreamEvent parsed = objectMapper.readValue(event.data(), AnthropicStreamEvent.class);
             switch (parsed.type() == null ? "" : parsed.type()) {
                 case "message_start" -> {

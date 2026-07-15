@@ -4,6 +4,8 @@ import java.util.function.BooleanSupplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import com.llm.gateway.api.dto.ChatCompletionResponse;
@@ -13,6 +15,7 @@ import com.llm.gateway.exception.ClientDisconnectedException;
 import com.llm.gateway.exception.GuardrailException;
 import com.llm.gateway.exception.NoProviderAvailableException;
 import com.llm.gateway.exception.ProviderException;
+import com.llm.gateway.observability.MetricsRecorder;
 import com.llm.gateway.provider.ProviderTarget;
 import com.llm.gateway.router.RouteDecision;
 
@@ -34,13 +37,25 @@ public class ResilientExecutor {
     private final CircuitBreakerRegistry breakerRegistry;
     private final int maxRetries;
 
+    @Nullable
+    private final MetricsRecorder metrics;
+
+    /** 便捷构造（测试用）：不上报指标。 */
+    public ResilientExecutor(CircuitBreakerRegistry breakerRegistry, GatewayProperties properties) {
+        this(breakerRegistry, properties, null);
+    }
+
     /**
      * @param breakerRegistry 熔断器注册表
      * @param properties      网关配置，提供最大重试次数
+     * @param metrics         指标记录器（provider 维度重试/降级/熔断跳过/上游延迟）
      */
-    public ResilientExecutor(CircuitBreakerRegistry breakerRegistry, GatewayProperties properties) {
+    @Autowired
+    public ResilientExecutor(
+            CircuitBreakerRegistry breakerRegistry, GatewayProperties properties, @Nullable MetricsRecorder metrics) {
         this.breakerRegistry = breakerRegistry;
         this.maxRetries = properties.resilience().maxRetries();
+        this.metrics = metrics;
     }
 
     /**
@@ -57,12 +72,18 @@ public class ResilientExecutor {
             CircuitBreaker breaker = breakerRegistry.get(target.provider());
             if (!breaker.allowRequest()) {
                 log.warn("目标 {} 的熔断器已打开，跳过", target);
+                incCircuitOpen(target);
                 continue;
             }
             // 单目标内的重试（首次 + maxRetries 次重试）
             for (int attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
+                    if (attempt > 0) {
+                        incRetry(target);
+                    }
+                    long startNanos = System.nanoTime();
                     ChatCompletionResponse response = invoker.invoke(target);
+                    recordUpstreamLatency(target, startNanos);
                     breaker.onSuccess();
                     if (attempt > 0) {
                         log.info("目标 {} 第 {} 次重试成功", target, attempt);
@@ -82,6 +103,8 @@ public class ResilientExecutor {
                     }
                 }
             }
+            // 单目标重试耗尽或确定性失败：换路由链上的下一个目标
+            incFallback(target);
         }
         throw new NoProviderAvailableException("路由链上所有目标均不可用：" + decision.chain(), lastError);
     }
@@ -107,12 +130,18 @@ public class ResilientExecutor {
             CircuitBreaker breaker = breakerRegistry.get(target.provider());
             if (!breaker.allowRequest()) {
                 log.warn("目标 {} 的熔断器已打开，跳过", target);
+                incCircuitOpen(target);
                 continue;
             }
             // 单目标内的重试（首次 + maxRetries 次重试）
             for (int attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
+                    if (attempt > 0) {
+                        incRetry(target);
+                    }
+                    long startNanos = System.nanoTime();
                     Usage usage = invoker.invokeStream(target);
+                    recordUpstreamLatency(target, startNanos);
                     breaker.onSuccess();
                     if (attempt > 0) {
                         log.info("目标 {} 第 {} 次重试成功", target, attempt);
@@ -144,6 +173,8 @@ public class ResilientExecutor {
                     }
                 }
             }
+            // 单目标重试耗尽或确定性失败：换路由链上的下一个目标
+            incFallback(target);
         }
         throw new NoProviderAvailableException("路由链上所有目标均不可用：" + decision.chain(), lastError);
     }
@@ -151,6 +182,31 @@ public class ResilientExecutor {
     /** 是否为确定性（不可重试）错误：由供应商适配器按上游状态码/配置问题标记。 */
     private static boolean isNonRetryable(Exception e) {
         return e instanceof ProviderException pe && !pe.retryable();
+    }
+
+    /** provider 维度指标（未装配 MetricsRecorder 时为 no-op，单测场景）。 */
+    private void incRetry(ProviderTarget target) {
+        if (metrics != null) {
+            metrics.incProviderRetry(target.provider());
+        }
+    }
+
+    private void incFallback(ProviderTarget target) {
+        if (metrics != null) {
+            metrics.incProviderFallback(target.provider());
+        }
+    }
+
+    private void incCircuitOpen(ProviderTarget target) {
+        if (metrics != null) {
+            metrics.incCircuitOpen(target.provider());
+        }
+    }
+
+    private void recordUpstreamLatency(ProviderTarget target, long startNanos) {
+        if (metrics != null) {
+            metrics.recordUpstreamLatency(target.provider(), (System.nanoTime() - startNanos) / 1_000_000);
+        }
     }
 
     /**

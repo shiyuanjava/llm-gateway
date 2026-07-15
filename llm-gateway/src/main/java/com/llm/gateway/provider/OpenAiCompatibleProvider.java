@@ -38,6 +38,8 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     private final RestClient restClient;
     private final String apiKey;
     private final ObjectMapper objectMapper;
+    /** 单条流式响应的总时长上限毫秒（wall-clock），防慢速流无限占用连接。 */
+    private final long streamMaxDurationMs;
 
     /**
      * @param name         供应商名（如 {@code openai} / {@code deepseek}）
@@ -52,6 +54,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
         this.restClient = RestClients.create(baseUrl, http);
+        this.streamMaxDurationMs = http == null ? 300_000L : http.streamMaxDurationMs();
     }
 
     @Override
@@ -144,9 +147,14 @@ public class OpenAiCompatibleProvider implements LlmProvider {
      * @throws IOException 读上游失败
      */
     Usage readStream(SseEventReader reader, Consumer<ChatCompletionChunk> onChunk) throws IOException {
+        long deadlineNanos = System.nanoTime() + streamMaxDurationMs * 1_000_000L;
         Usage usage = null;
         SseEventReader.SseEvent event;
         while ((event = reader.next()) != null) {
+            if (System.nanoTime() > deadlineNanos) {
+                // wall-clock 上限:读超时只限帧间停顿,慢速流可绕过;超总时长主动断流(非供应商故障,不计熔断)
+                throw ProviderException.nonRetryable(name + " 流式响应超过总时长上限 " + streamMaxDurationMs + "ms，主动断流");
+            }
             String data = event.data();
             if ("[DONE]".equals(data.trim())) {
                 break;

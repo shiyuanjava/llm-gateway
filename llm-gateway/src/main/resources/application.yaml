@@ -45,6 +45,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # 本地无密码 Redis 留空即可;compose 部署由 REDIS_PASSWORD 注入
+      password: ${REDIS_PASSWORD:}
       timeout: 1s
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:llm_gateway}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
@@ -155,6 +157,8 @@ gateway:
   http:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
+    # 单条流式响应总时长上限(读超时只限帧间停顿,这里限整条流的 wall-clock)
+    stream-max-duration-ms: 300000
 
   # ---- 管理端鉴权 ----
   admin:

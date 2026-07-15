@@ -104,6 +104,21 @@ class TokenBillingIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("pricing_not_configured"));
     }
 
+    /** 审计为异步落库:轮询直到出现符合条件的记录,最多等 5s。 */
+    private Map<String, Object> awaitRow(String sql) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (true) {
+            var rows = jdbcTemplate.queryForList(sql, TENANT);
+            if (!rows.isEmpty()) {
+                return rows.get(0);
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                throw new AssertionError("等待审计记录超时: " + sql);
+            }
+            Thread.sleep(50);
+        }
+    }
+
     @Test
     void rejectionIsAuditedWithErrorCode() throws Exception {
         mockMvc.perform(post("/v1/chat/completions")
@@ -111,9 +126,8 @@ class TokenBillingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("it-unpriced", false)))
                 .andExpect(status().isUnprocessableEntity());
-        Map<String, Object> row = jdbcTemplate.queryForMap(
-                "SELECT error_code, served_model, total_tokens FROM request_log WHERE tenant = ? AND status = 'error' ORDER BY id DESC LIMIT 1",
-                TENANT);
+        Map<String, Object> row = awaitRow(
+                "SELECT error_code, served_model, total_tokens FROM request_log WHERE tenant = ? AND status = 'error' ORDER BY id DESC LIMIT 1");
         assertEquals("pricing_not_configured", row.get("error_code"));
         assertNull(row.get("served_model"), "拒绝发生在调上游之前，served_model 应为空");
         assertEquals(0, ((Number) row.get("total_tokens")).intValue());
@@ -128,10 +142,8 @@ class TokenBillingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usage.total_tokens").isNumber())
                 .andExpect(jsonPath("$.usage.prompt_tokens_details").doesNotExist());
-        Integer cacheRead = jdbcTemplate.queryForObject(
-                "SELECT cache_read_tokens FROM request_log WHERE tenant = ? AND status = 'success' ORDER BY id DESC LIMIT 1",
-                Integer.class,
-                TENANT);
-        assertEquals(0, cacheRead, "mock 无缓存，缓存列应落 0 而非 NULL");
+        Map<String, Object> row = awaitRow(
+                "SELECT cache_read_tokens FROM request_log WHERE tenant = ? AND status = 'success' ORDER BY id DESC LIMIT 1");
+        assertEquals(0, ((Number) row.get("cache_read_tokens")).intValue(), "mock 无缓存，缓存列应落 0 而非 NULL");
     }
 }

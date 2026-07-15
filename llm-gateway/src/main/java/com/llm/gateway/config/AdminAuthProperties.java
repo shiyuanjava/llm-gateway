@@ -3,6 +3,7 @@ package com.llm.gateway.config;
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * 管理端鉴权配置（前缀 {@code gateway.admin}）。
@@ -21,6 +22,10 @@ public record AdminAuthProperties(
         long tokenTtlMinutes,
         String bootstrapUsername,
         String bootstrapPassword) {
+
+    /** 配置绑定用规范构造器（存在多个构造器时需显式指定）。 */
+    @ConstructorBinding
+    public AdminAuthProperties {}
 
     /** 兼容旧签名的便捷构造（测试用）：无历史密钥。 */
     public AdminAuthProperties(

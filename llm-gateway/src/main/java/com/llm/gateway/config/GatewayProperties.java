@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * 网关的外置配置（前缀 {@code gateway}）。
@@ -36,10 +37,28 @@ public record GatewayProperties(
     /**
      * 出站 HTTP 客户端配置（调用各 LLM 供应商）。
      *
-     * @param connectTimeoutMs 连接超时毫秒
-     * @param readTimeoutMs    读超时毫秒
+     * @param connectTimeoutMs    连接超时毫秒
+     * @param readTimeoutMs       读超时毫秒（流式场景为「帧间停顿上限」）
+     * @param streamMaxDurationMs 单条流式响应的总时长上限毫秒（wall-clock deadline）：
+     *                            防止「每 <读超时 滴一个字节」的慢速流无限占用连接
      */
-    public record Http(int connectTimeoutMs, int readTimeoutMs) {}
+    public record Http(int connectTimeoutMs, int readTimeoutMs, long streamMaxDurationMs) {
+
+        private static final long DEFAULT_STREAM_MAX_DURATION_MS = 300_000L;
+
+        /** 配置绑定用规范构造器（存在多个构造器时需显式指定）。 */
+        @ConstructorBinding
+        public Http {
+            if (streamMaxDurationMs <= 0) {
+                streamMaxDurationMs = DEFAULT_STREAM_MAX_DURATION_MS;
+            }
+        }
+
+        /** 兼容旧签名（测试用）：流式总时长上限取默认 5 分钟。 */
+        public Http(int connectTimeoutMs, int readTimeoutMs) {
+            this(connectTimeoutMs, readTimeoutMs, DEFAULT_STREAM_MAX_DURATION_MS);
+        }
+    }
 
     /**
      * 路由参数。

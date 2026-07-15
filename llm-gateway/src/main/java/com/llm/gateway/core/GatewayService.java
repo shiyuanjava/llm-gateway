@@ -104,6 +104,7 @@ public class GatewayService {
     public ChatCompletionResponse complete(ChatCompletionRequest request, Principal principal) {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
+        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         try {
             // 1. 授权：该租户能否访问目标模型
             apiKeyService.authorize(principal, request.model());
@@ -158,6 +159,7 @@ public class GatewayService {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
         context.markStreamed();
+        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         SseWriter writer = new SseWriter(servletResponse, objectMapper);
         // 可重放契约：首帧前失败会重试/换目标重新调用 invoker，聚合器必须按次尝试重建，
         // 否则重试会把上一次已累计的增量重复计入（见 StreamInvoker javadoc）

@@ -80,6 +80,22 @@ class ChatCompletionStreamIntegrationTest {
         return result.getResponse().getContentAsString(StandardCharsets.UTF_8);
     }
 
+    /** 审计日志为异步落库:轮询最新一条记录的 status,最多等 5s。 */
+    private String awaitLatestStatus(String expected) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 5_000;
+        String status = null;
+        while (System.currentTimeMillis() < deadline) {
+            var rows = jdbcTemplate.queryForList(
+                    "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1", String.class, TENANT);
+            status = rows.isEmpty() ? null : rows.get(0);
+            if (expected.equals(status)) {
+                return status;
+            }
+            Thread.sleep(50);
+        }
+        return status;
+    }
+
     @Test
     void streamEmitsChunksAndDoneWithoutUsageByDefault() throws Exception {
         String sse = postSse(body("mock-stream-it", "hi-" + UUID.randomUUID(), ""));
@@ -104,9 +120,7 @@ class ChatCompletionStreamIntegrationTest {
         String json = body("mock-stream-it", "cache-" + UUID.randomUUID(), "");
         postSse(json);
         postSse(json);
-        String status = jdbcTemplate.queryForObject(
-                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1", String.class, TENANT);
-        assertEquals("cache_hit", status, "第二次同请求应命中缓存回放");
+        assertEquals("cache_hit", awaitLatestStatus("cache_hit"), "第二次同请求应命中缓存回放");
     }
 
     @Test
@@ -116,9 +130,7 @@ class ChatCompletionStreamIntegrationTest {
         assertTrue(sse.contains("\"code\":\"content_filtered\""), "应写出截断错误帧");
         assertFalse(sse.contains("data: [DONE]"), "截断的流不应有 [DONE]");
         assertFalse(sse.contains("不应到达客户端"), "敏感词所在帧及之后内容不得写出");
-        String status = jdbcTemplate.queryForObject(
-                "SELECT status FROM request_log WHERE tenant = ? ORDER BY id DESC LIMIT 1", String.class, TENANT);
-        assertEquals("guardrail_truncated", status);
+        assertEquals("guardrail_truncated", awaitLatestStatus("guardrail_truncated"));
     }
 
     @Test

@@ -19,12 +19,16 @@ services:
 
   redis:
     image: redis:7-alpine
+    environment:
+      # healthcheck 的 shell 里引用;requirepass 由 compose 在 command 里插值
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
     # 纯缓存:不持久化(丢了就丢了),内存上限 + LRU 淘汰。
-    # 刻意不映射宿主机端口:仅容器网络内可达(与 gateway 9090 同一策略),故不设密码
+    # 刻意不映射宿主机端口:仅容器网络内可达;即便如此仍设密码作纵深防御,不裸奔靠网络隔离兜底
     command: ["redis-server", "--save", "", "--appendonly", "no",
-              "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+              "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru",
+              "--requirepass", "${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -92,6 +96,7 @@ services:
       GATEWAY_CACHE_STORE: redis
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
       GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET:?请在 .env 设置 GATEWAY_JWT_SECRET(至少 32 字符)}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
