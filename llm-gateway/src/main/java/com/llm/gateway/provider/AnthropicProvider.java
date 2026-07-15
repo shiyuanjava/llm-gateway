@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.llm.gateway.api.dto.ChatCompletionChunk;
 import com.llm.gateway.api.dto.ChatCompletionRequest;
@@ -67,7 +68,7 @@ public class AnthropicProvider implements LlmProvider {
     @Override
     public ChatCompletionResponse chat(ChatCompletionRequest request) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new ProviderException("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
+            throw ProviderException.nonRetryable("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
         }
         try {
             String requestBody = objectMapper.writeValueAsString(toAnthropicBody(request));
@@ -87,6 +88,12 @@ public class AnthropicProvider implements LlmProvider {
                     objectMapper.readValue(responseBody, AnthropicResponse.class), request.model());
         } catch (ProviderException e) {
             throw e;
+        } catch (RestClientResponseException e) {
+            // 按上游状态码区分瞬时故障（5xx/429/408，可重试）与确定性错误（其余 4xx，不重试）
+            throw new ProviderException(
+                    "调用 Anthropic 失败 HTTP " + e.getStatusCode() + "：" + truncate(e.getResponseBodyAsString()),
+                    e,
+                    ProviderException.isRetryableStatus(e.getStatusCode().value()));
         } catch (Exception e) {
             throw new ProviderException("调用 Anthropic 失败：" + e.getMessage(), e);
         }
@@ -102,7 +109,7 @@ public class AnthropicProvider implements LlmProvider {
     @Override
     public Usage chatStream(ChatCompletionRequest request, Consumer<ChatCompletionChunk> onChunk) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new ProviderException("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
+            throw ProviderException.nonRetryable("Anthropic api-key 未配置（设置 ANTHROPIC_API_KEY 环境变量）");
         }
         try {
             Map<String, Object> body = toAnthropicBody(request);
@@ -121,7 +128,10 @@ public class AnthropicProvider implements LlmProvider {
                             String error =
                                     new String(clientResponse.getBody().readNBytes(2048), StandardCharsets.UTF_8);
                             throw new ProviderException(
-                                    "Anthropic 流式调用失败 HTTP " + clientResponse.getStatusCode() + "：" + truncate(error));
+                                    "Anthropic 流式调用失败 HTTP " + clientResponse.getStatusCode() + "：" + truncate(error),
+                                    null,
+                                    ProviderException.isRetryableStatus(
+                                            clientResponse.getStatusCode().value()));
                         }
                         try (SseEventReader reader = new SseEventReader(clientResponse.getBody())) {
                             return readAnthropicStream(reader, request.model(), onChunk);

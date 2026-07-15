@@ -86,6 +86,46 @@ class ResilientExecutorTest {
         assertTrue(elapsedMs >= 300, "预期总耗时 ≥ 300ms，实际 " + elapsedMs + "ms");
     }
 
+    @Test
+    void nonRetryableErrorSkipsRetryAndBreakerButFallsBack() {
+        // maxRetries=2：不可重试错误既不该重试（只调用 1 次），也不该计入熔断失败
+        ResilientExecutor retryExecutor = new ResilientExecutor(
+                registry, Fixtures.properties(60, 300, 1_000_000L, 2, 30, 2));
+        RouteDecision decision =
+                new RouteDecision(new ProviderTarget("p-4xx", "m"), List.of(new ProviderTarget("p-ok2", "m")));
+
+        int[] calls = {0};
+        ChatCompletionResponse response = retryExecutor.execute(decision, target -> {
+            if ("p-4xx".equals(target.provider())) {
+                calls[0]++;
+                throw new ProviderException("HTTP 400", null, false);
+            }
+            return ok();
+        });
+
+        assertEquals("served-ok", response.id());
+        assertEquals(1, calls[0], "不可重试错误不应重试");
+        assertEquals(CircuitBreaker.State.CLOSED, registry.get("p-4xx").state());
+        // 熔断阈值=2：若误计入失败，再来一次同样的确定性错误就会打开；验证仍保持关闭
+        retryExecutor.execute(decision, target -> {
+            if ("p-4xx".equals(target.provider())) {
+                throw new ProviderException("HTTP 400", null, false);
+            }
+            return ok();
+        });
+        assertEquals(CircuitBreaker.State.CLOSED, registry.get("p-4xx").state());
+    }
+
+    @Test
+    void retryableStatusClassification() {
+        assertTrue(ProviderException.isRetryableStatus(500));
+        assertTrue(ProviderException.isRetryableStatus(429));
+        assertTrue(ProviderException.isRetryableStatus(408));
+        org.junit.jupiter.api.Assertions.assertFalse(ProviderException.isRetryableStatus(400));
+        org.junit.jupiter.api.Assertions.assertFalse(ProviderException.isRetryableStatus(401));
+        org.junit.jupiter.api.Assertions.assertFalse(ProviderException.isRetryableStatus(422));
+    }
+
     private ChatCompletionResponse ok() {
         return ChatCompletionResponse.singleMessage("served-ok", 0, "m", "hi", "stop", Usage.of(1, 1));
     }

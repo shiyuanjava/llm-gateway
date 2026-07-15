@@ -70,6 +70,11 @@ public class ResilientExecutor {
                     return response;
                 } catch (Exception e) {
                     lastError = e;
+                    // 确定性错误（4xx/配置问题）：重试注定同样失败，不计熔断、不重试，直接换下一个目标
+                    if (isNonRetryable(e)) {
+                        log.warn("目标 {} 返回不可重试错误，换下一个目标：{}", target, e.getMessage());
+                        break;
+                    }
                     breaker.onFailure();
                     log.warn("目标 {} 调用失败（第 {} 次尝试）：{}", target, attempt + 1, e.getMessage());
                     if (attempt < maxRetries && !backoff(attempt)) {
@@ -117,13 +122,21 @@ public class ResilientExecutor {
                     throw e; // 非供应商故障：不计熔断、不重试
                 } catch (Exception e) {
                     lastError = e;
-                    breaker.onFailure();
+                    boolean nonRetryable = isNonRetryable(e);
+                    if (!nonRetryable) {
+                        breaker.onFailure();
+                    }
                     if (streamStarted.getAsBoolean()) {
                         // 首帧已写给客户端：无法换目标重放，只能断流
                         log.warn("目标 {} 在首帧写出后流式调用失败，无法降级，直接断流：{}", target, e.getMessage());
                         throw e instanceof ProviderException pe
                                 ? pe
                                 : new ProviderException("目标 " + target + " 流式输出已开始后上游失败：" + e.getMessage(), e);
+                    }
+                    // 确定性错误：不重试，直接换下一个目标
+                    if (nonRetryable) {
+                        log.warn("目标 {} 返回不可重试错误，换下一个目标：{}", target, e.getMessage());
+                        break;
                     }
                     log.warn("目标 {} 流式调用失败（第 {} 次尝试）：{}", target, attempt + 1, e.getMessage());
                     if (attempt < maxRetries && !backoff(attempt)) {
@@ -133,6 +146,11 @@ public class ResilientExecutor {
             }
         }
         throw new NoProviderAvailableException("路由链上所有目标均不可用：" + decision.chain(), lastError);
+    }
+
+    /** 是否为确定性（不可重试）错误：由供应商适配器按上游状态码/配置问题标记。 */
+    private static boolean isNonRetryable(Exception e) {
+        return e instanceof ProviderException pe && !pe.retryable();
     }
 
     /**
