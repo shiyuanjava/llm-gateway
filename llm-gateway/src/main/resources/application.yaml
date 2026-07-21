@@ -107,7 +107,8 @@ gateway:
     provider: ${LLM_PROVIDER:deepseek}
     model: ${LLM_MODEL:deepseek-v4-pro}
 
-  # ---- 供应商接入（密钥用环境变量注入；缺省为空则该供应商不可用，会自动 Fallback）----
+  # ---- 供应商接入（密钥经占位符注入:生产在 Nacos llm-gateway.yaml 里发布同名键,
+  #      显式设置的环境变量优先(CI/本地);缺省为空则该供应商不可用,会自动 Fallback）----
   providers:
     deepseek:
       base-url: https://api.deepseek.com
@@ -160,7 +161,7 @@ gateway:
     # 单条流式响应总时长上限(读超时只限帧间停顿,这里限整条流的 wall-clock)
     stream-max-duration-ms: 300000
 
-  # ---- 管理端鉴权 ----
+  # ---- 管理端鉴权（密钥同上:生产值在 Nacos,环境变量可覆盖）----
   admin:
     jwt-secret: ${GATEWAY_JWT_SECRET:}
     # 密钥轮换:换新 GATEWAY_JWT_SECRET 时把旧密钥放这里(逗号分隔),旧 token 在 TTL 内仍可验签;过渡期后清空

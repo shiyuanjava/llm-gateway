@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nacos-init-script
+  namespace: llm-gateway
+data:
+  # 本脚本是 llm-gateway/deploy/nacos-init/init.sh 的 K8s 副本(多一段就绪等待),改动需两处同步。
+  # 只在 dataId 不存在时发布:重复跑 Job 不会覆盖控制台里改过的值(尤其是密钥)。
+  init.sh: |
+    #!/bin/sh
+    set -eu
+    NACOS="http://nacos:8848/nacos/v1/cs/configs"
+    until curl -fsS http://nacos:8080/v3/console/health/readiness >/dev/null; do sleep 3; done
+
+    exists() {
+      curl -fsS "$NACOS?dataId=$1&group=DEFAULT_GROUP" >/dev/null 2>&1
+    }
+
+    if exists "llm-gateway.yaml"; then
+      echo "llm-gateway.yaml exists, skip"
+    else
+      curl -fsS -X POST "$NACOS" \
+        --data-urlencode "dataId=llm-gateway.yaml" \
+        --data-urlencode "group=DEFAULT_GROUP" \
+        --data-urlencode "type=yaml" \
+        --data-urlencode "content=# ===== 运营参数(动态下发) =====
+    gateway:
+      rate-limit:
+        requests-per-minute: 60
+      quota:
+        tokens-per-tenant: 1000000
+      resilience:
+        max-retries: 2
+        circuit-breaker:
+          failure-threshold: 5
+          open-seconds: 30
+
+    # ===== 应用密钥(在 Nacos 控制台填写真实值;修改后重启 gateway 生效) =====
+    GATEWAY_JWT_SECRET: \"\"
+    ADMIN_USERNAME: \"\"
+    ADMIN_PASSWORD: \"\"
+    DEEPSEEK_API_KEY: \"\"
+    OPENAI_API_KEY: \"\"
+    ANTHROPIC_API_KEY: \"\"
+    # GATEWAY_JWT_SECRETS_FALLBACK: \"\"
+    # GATEWAY_ADMIN_ALLOWED_ORIGINS: \"\"
+    "
+      echo "published llm-gateway.yaml template"
+    fi
+
+    if exists "llm-gateway-param-flow-rules"; then
+      echo "llm-gateway-param-flow-rules exists, skip"
+    else
+      curl -fsS -X POST "$NACOS" \
+        --data-urlencode "dataId=llm-gateway-param-flow-rules" \
+        --data-urlencode "group=DEFAULT_GROUP" \
+        --data-urlencode "type=json" \
+        --data-urlencode 'content=[{"resource":"chat-completion","paramIdx":0,"grade":1,"count":5,"durationInSec":1}]'
+      echo "published llm-gateway-param-flow-rules"
+    fi
+    echo "nacos-init done"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nacos-init
+  namespace: llm-gateway
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: curlimages/curl:8.10.1
+          command: ["sh", "/scripts/init.sh"]
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: nacos-init-script
+            defaultMode: 0755

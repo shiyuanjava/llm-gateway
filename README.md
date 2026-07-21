@@ -1,5 +1,8 @@
 # LLM Gateway
 
+> 云服务器、GitLab CI、Docker Compose、K3s 与中间件持久化的完整中文教程：
+> [`docs/gitlab-docker-k3s-deployment-guide.md`](docs/gitlab-docker-k3s-deployment-guide.md)
+
 一个**生产级 LLM API 网关**:对外提供 OpenAI 兼容协议(含 SSE 流式),对内统一管理多供应商路由、鉴权、限流配额、内容护栏、缓存与 Token 级计费,并配套 Vue 3 管理控制台。单机可用 Docker Compose 一条命令拉起全套。
 
 > 后端 Spring Boot 4.1 / Java 21(MVC + 虚拟线程,不引入 WebFlux);前端 Vue 3 + Element Plus + Vite;存储 MySQL 8。
@@ -29,8 +32,11 @@
 
 ```bash
 cd llm-gateway
-cp .env.example .env     # 编辑必填项:MYSQL_ROOT_PASSWORD、GATEWAY_JWT_SECRET(≥32 字符)、ADMIN_USERNAME/PASSWORD
+cp .env.example .env     # 只需基础设施密码:MYSQL_ROOT_PASSWORD、REDIS_PASSWORD
 docker compose up -d --build
+# 首次启动:gateway 会等待应用密钥 —— 打开 Nacos 控制台 http://localhost:8850,
+# 在 配置管理 → llm-gateway.yaml 里填 GATEWAY_JWT_SECRET(≥32字符)/ADMIN_*/供应商 Key 并发布,然后:
+docker compose restart gateway
 ```
 
 | 入口 | 地址 |
@@ -65,13 +71,15 @@ cd llm-gateway-ui && npm install && npm run dev
 
 Roadmap 下一步:Spring Cloud Alibaba 迁移(Nacos 配置中心、Sentinel 限流熔断替换自研组件)。
 
-## 关键端口与环境变量
+## 关键端口与配置项
 
-| 变量 | 说明 |
+应用密钥统一放 **Nacos 配置中心**(`llm-gateway.yaml`,首启由 nacos-init 发布空模板);同名**环境变量若显式设置则优先**(CI 测试/本地裸跑用)。基础设施密码(MySQL/Redis)在 `.env`。
+
+| 配置项 | 说明 |
 |---|---|
-| `GATEWAY_JWT_SECRET` | JWT 签名密钥,**≥32 字符**,缺失拒绝启动 |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 首启引导管理员(仅 admin_user 表为空时创建) |
-| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 供应商密钥,留空则该供应商不可用自动 Fallback |
+| `GATEWAY_JWT_SECRET` | JWT 签名密钥,**≥32 字符**,缺失拒绝启动(Nacos 里填) |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 首启引导管理员,仅 admin_user 表为空时创建(Nacos 里填) |
+| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 供应商密钥,留空则该供应商不可用自动 Fallback(Nacos 里填) |
 | `GATEWAY_MANAGEMENT_PORT` | Actuator 管理端口,默认 9090 |
 | `GATEWAY_ADMIN_ALLOWED_ORIGINS` | 管理端 CORS 白名单(同源反代部署留空) |
 

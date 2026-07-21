@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - mysql.yaml
+  - redis.yaml
+  - nacos.yaml
+  - sentinel.yaml
+  - nacos-init.yaml
+  - gateway.yaml
+  - ui.yaml
+

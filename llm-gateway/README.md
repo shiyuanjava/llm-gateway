@@ -169,9 +169,15 @@ curl http://localhost:8080/v1/chat/completions \
 前置:Docker 20+ 与 Docker Compose v2;前端目录 `../llm-gateway-ui` 与本目录同级(同一仓库内)。
 
 ```bash
-cp .env.example .env   # 编辑必填项:MYSQL_ROOT_PASSWORD、GATEWAY_JWT_SECRET(≥32 字符)、ADMIN_USERNAME/PASSWORD
+cp .env.example .env   # 只需基础设施密码:MYSQL_ROOT_PASSWORD、REDIS_PASSWORD
 docker compose up -d --build
+# 首次启动:gateway 会等待应用密钥(fail-closed)。打开 Nacos 控制台 http://localhost:8850,
+# 在 配置管理 → llm-gateway.yaml(nacos-init 已发布空模板)填 GATEWAY_JWT_SECRET(≥32 字符)/
+# ADMIN_USERNAME/ADMIN_PASSWORD/供应商 Key 并发布,然后:
+docker compose restart gateway
 ```
+
+密钥分级:应用密钥在 Nacos(一处存储、控制台可改、随 `nacos-data` 卷持久化,重复部署不覆盖);`.env` 只放容器启动就要用的基础设施密码。同名环境变量若显式设置则优先(CI 测试/本地裸跑用)。
 
 拓扑与端口:
 
@@ -184,7 +190,7 @@ docker compose up -d --build
 | redis | 6379(仅容器网络) | 响应缓存(纯缓存不持久化,LRU 256MB);gateway 对其故障 fail-open |
 
 - API 调用:`http://<host>:${UI_PORT}/v1/chat/completions`(Bearer API Key,经 nginx 反代,SSE 不缓冲)。Key 在管理台新建(`sk-gw-` 开头);seed 的演示 Key `sk-demo-tenant-a/b` 仅存在于开发环境,prod profile 首次迁移即被 `V3__purge_demo_api_keys.sql` 清除。
-- 日志:`docker compose logs -f gateway`(控制台);容器内 `/app/logs/gateway.log`(prod profile,按天 + 100MB 滚动,保留 14 天,总量 2GB;注意日志在容器写层,容器重建即丢,如需留存可给 `/app/logs` 挂 volume)。每行日志含 traceId,与响应头 `X-Request-Id`、`request_log.request_id` 同 ID,可互查。
+- 日志:`docker compose logs -f gateway`(控制台);容器内 `/app/logs/gateway.log`(prod profile,按天 + 100MB 滚动,保留 14 天,总量 2GB;已外挂 named volume `gateway-logs`,容器重建不丢)。每行日志含 traceId,与响应头 `X-Request-Id`、`request_log.request_id` 同 ID,可互查。
 - 优雅停机:`docker compose stop`(SIGTERM)后不再接新请求,进行中的请求(含 SSE 流)最多 30s 收尾。
 
 ---

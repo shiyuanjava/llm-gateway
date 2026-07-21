@@ -1,11 +1,14 @@
 # LLM Gateway 单机部署:MySQL + Redis + 网关 + 管理台(nginx 同源反代)。
-# 使用:cp .env.example .env && 编辑必填项 && docker compose up -d --build
+# 使用:cp .env.example .env(只需基础设施密钥)&& docker compose up -d --build
+#      首次启动后在 Nacos 控制台(http://localhost:8850)的 llm-gateway.yaml 里填应用密钥,
+#      再 docker compose restart gateway。密钥说明见 deploy/nacos-init/init.sh 发布的模板。
 # 前置:前端目录 llm-gateway-ui 与本目录同级、同属一个仓库(build context ../llm-gateway-ui)。
 services:
   mysql:
     image: mysql:8
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: llm_gateway
       TZ: Asia/Shanghai
     volumes:
@@ -45,8 +48,9 @@ services:
       NACOS_AUTH_IDENTITY_VALUE: "nacos-local"
       TZ: Asia/Shanghai
     ports:
-      - "8848:8848"   # 客户端 HTTP API
-      - "8850:8080"   # v3 控制台(浏览器访问 http://localhost:8850)
+      # 管理组件只监听本机，远程查看请使用 SSH 隧道，避免把无鉴权控制台暴露到公网
+      - "127.0.0.1:8848:8848"   # 客户端 HTTP API
+      - "127.0.0.1:8850:8080"   # v3 控制台
     volumes:
       - nacos-data:/home/nacos/data
     healthcheck:
@@ -72,10 +76,11 @@ services:
   sentinel-dashboard:
     image: bladex/sentinel-dashboard:latest
     ports:
-      - "8858:8858"
+      - "127.0.0.1:8858:8858"
     restart: unless-stopped
 
   gateway:
+    image: ${GATEWAY_IMAGE:-llm-gateway-gateway:local}
     build: .
     depends_on:
       mysql:
@@ -97,19 +102,18 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 设置 REDIS_PASSWORD}
-      GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET:?请在 .env 设置 GATEWAY_JWT_SECRET(至少 32 字符)}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GATEWAY_ADMIN_ALLOWED_ORIGINS: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:-}
+      # 应用密钥(GATEWAY_JWT_SECRET/ADMIN_*/供应商 Key/跨域白名单)不再经环境变量注入:
+      # 统一放 Nacos 的 llm-gateway.yaml(nacos-init 首启发布空模板,控制台填写)。
+      # 刻意不传空值环境变量 —— Spring 里环境变量优先级高于 Nacos,空字符串会遮蔽 Nacos 配置。
       NACOS_SERVER_ADDR: nacos:8848
       SENTINEL_DASHBOARD: sentinel-dashboard:8858
       GATEWAY_RATE_LIMIT_STORE: sentinel
       # nacos-client 默认往 ${user.home}/logs 写日志,非 root 用户不可写会让 Logback 初始化直接失败
       JAVA_TOOL_OPTIONS: "-DJM.LOG.PATH=/app/logs/nacos -Dnacos.logging.default.config.enabled=false -Dcsp.sentinel.log.dir=/app/logs/sentinel"
       TZ: Asia/Shanghai
+    volumes:
+      # prod profile 会写滚动文件日志；外挂后重建容器不会丢失最近 14 天日志
+      - gateway-logs:/app/logs
     # 刻意不映射 8080/9090 到宿主机:业务流量经 ui 反代,Actuator 仅容器网络内可达
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9090/actuator/health"]
@@ -120,6 +124,7 @@ services:
     restart: unless-stopped
 
   ui:
+    image: ${UI_IMAGE:-llm-gateway-ui:local}
     build:
       context: ../llm-gateway-ui
     depends_on:
@@ -132,3 +137,4 @@ services:
 volumes:
   mysql-data:
   nacos-data:
+  gateway-logs:
