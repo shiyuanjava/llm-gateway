@@ -163,6 +163,8 @@ deploy_k3s:
     - apk add --no-cache kubectl
     - export KUBECONFIG="$KUBE_CONFIG"
   script:
+    # 前置检查:KUBE_CONFIG 未配置(K3s 阶段还没启用)时立刻失败并说明,避免 kubectl 去敲 localhost:8080 的迷惑报错
+    - test -s "$KUBE_CONFIG" || { echo "未配置 KUBE_CONFIG(File 类型 CI 变量,见部署文档 11.3 节)。K3s 路线尚未启用,Compose 部署请点 deploy_compose。"; exit 1; }
     - kubectl apply -k deploy/k8s/base
     - kubectl -n llm-gateway set image deployment/gateway gateway="$GATEWAY_IMAGE"
     - kubectl -n llm-gateway set image deployment/ui ui="$UI_IMAGE"

@@ -520,6 +520,8 @@ sudo sed 's/127.0.0.1/<服务器内网IP>/' /etc/rancher/k3s/k3s.yaml
 
 把输出完整粘贴进 File 变量。安全组的 6443 只允许 Runner 来源 IP；若证书不包含所用地址，重装 K3s 时加 `--tls-san <地址>`，不要关闭 TLS 校验。
 
+顺带说明：`deploy_k3s` 在流水线里始终可见，但未配置 `KUBE_CONFIG` 时点了会立刻失败并提示「K3s 路线尚未启用」——第一阶段误点它没有任何影响，Compose 部署请点 `deploy_compose`。
+
 然后在流水线里手动点 `deploy_k3s`，它做四件事：`kubectl apply -k deploy/k8s/base`（清单来自 CI Job 自己的浅克隆，不占服务器部署目录）、把两个 Deployment 的镜像 `set image` 到本次 SHA、等待 rollout 完成。
 
 **首次部署同样会在 gateway 上卡住**——原因和 Compose 一样：K3s 里的 Nacos 是另一个独立实例，`nacos-init` Job 发布的模板密钥也是空的。填法：
@@ -741,6 +743,7 @@ kubectl -n llm-gateway get events --sort-by=.lastTimestamp
 判断问题所在层次：
 
 - 测试 Job 失败：代码或依赖问题，还没构建镜像。
+- 容器"起来又消失"、`docker ps -a` 里成片 `Exited (137)`、`dmesg` 有 `Out of memory`：小内存机器被 OOM 杀了。GitLab 本身就吃 4GB 上下,再叠全套中间件很容易触顶。标准保命操作是加 4G swap（`fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`,再写入 `/etc/fstab`）,代价是紧张时变慢。部署 Job 可反复重试,`docker compose up -d` 会把缺的容器补齐,数据卷不受影响。
 - `docker login`/push/pull Registry 报 `Client.Timeout exceeded`（超时而非拒绝）：多半是把 Registry 地址写成了公网 IP——机器内部访问自己的公网 IP 走 NAT 回环，云上常不通。Registry 统一用内网 IP（第 4 节）；改完 `gitlab.rb` 要 `gitlab-ctl reconfigure`，三处 insecure 放行（4.1 节）与 CI 里 dind 参数同步改。
 - 测试 Job 卡在启动早期（如 `HV000001` 之后长时间无输出）：环境里没有 Nacos，而 nacos-client 会对 `localhost:8848` 反复重连退避，每个测试上下文都卡数分钟。测试环境显式设 `NACOS_DISCOVERY_ENABLED=false`、`SPRING_CLOUD_NACOS_CONFIG_ENABLED=false`、`SPRING_CLOUD_SENTINEL_ENABLED=false` 三个开关（`.gitlab-ci.yml` 已带）。通用教训：**单元/集成测试不应隐式依赖外部中间件，凡有"无此依赖"开关的组件，测试环境都要显式关掉**。
 - 测试 Job 大量 `Failed to load ApplicationContext`：先滚到 Job 日志**最顶部**找黄色 `WARNING: Service ... probably didn't start properly`——多半是 service 容器没起来。经典坑：**Job 级 `variables:` 会整体注入 service 容器**，比如 `MYSQL_USER=root` 会让官方 mysql 镜像的启动脚本直接报错退出（它禁止 root 作为 MYSQL_USER）。解法：数据库初始化变量写在 service 自己的 `variables:` 里（优先级更高），并把泄漏的键显式置空。
