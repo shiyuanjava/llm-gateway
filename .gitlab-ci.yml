@@ -101,7 +101,7 @@ build_images:
       # --insecure-registry 放行自建 HTTP Registry(上 HTTPS 后可删);
       # --registry-mirror 国内直连 Docker Hub 不通,构建拉基础镜像走加速(失效就换当期可用的)
       command:
-        - "--insecure-registry=119.29.120.205:5050"
+        - "--insecure-registry=10.1.0.16:5050"
         - "--registry-mirror=https://mirror.ccs.tencentyun.com"
         - "--registry-mirror=https://docker.m.daocloud.io"
   before_script:
