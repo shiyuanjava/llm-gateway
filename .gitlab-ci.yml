@@ -179,5 +179,6 @@ deploy_k3s:
     url: "http://$DEPLOY_HOST:30081"
   resource_group: k3s-production
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_REGISTRY'
+    # 多一个 $KUBE_CONFIG 条件:没配置该变量(K3s 阶段未启用)时,本 Job 干脆不出现在流水线里
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_REGISTRY && $KUBE_CONFIG'
       when: manual

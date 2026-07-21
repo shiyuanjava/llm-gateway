@@ -533,7 +533,7 @@ sudo sed 's/127.0.0.1/<服务器内网IP>/' /etc/rancher/k3s/k3s.yaml
 
 把输出完整粘贴进 File 变量。安全组的 6443 只允许 Runner 来源 IP；若证书不包含所用地址，重装 K3s 时加 `--tls-san <地址>`，不要关闭 TLS 校验。
 
-顺带说明：`deploy_k3s` 在流水线里始终可见，但未配置 `KUBE_CONFIG` 时点了会立刻失败并提示「K3s 路线尚未启用」——第一阶段误点它没有任何影响，Compose 部署请点 `deploy_compose`。
+顺带说明：`deploy_k3s` 的规则里带了 `&& $KUBE_CONFIG`——没配置该变量时它根本不会出现在流水线里，第一阶段不会误点。配置了 `KUBE_CONFIG` 之后它才出现（若配置后仍不出现，把 `.gitlab-ci.yml` 里该 Job 规则中的 `&& $KUBE_CONFIG` 删掉即可，脚本内还有一道同样的检查兜底）。
 
 然后在流水线里手动点 `deploy_k3s`，它做四件事：`kubectl apply -k deploy/k8s/base`（清单来自 CI Job 自己的浅克隆，不占服务器部署目录）、把两个 Deployment 的镜像 `set image` 到本次 SHA、等待 rollout 完成。
 
