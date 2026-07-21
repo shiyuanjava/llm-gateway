@@ -739,6 +739,7 @@ kubectl -n llm-gateway get events --sort-by=.lastTimestamp
 判断问题所在层次：
 
 - 测试 Job 失败：代码或依赖问题，还没构建镜像。
+- 测试 Job 卡在启动早期（如 `HV000001` 之后长时间无输出）：环境里没有 Nacos，而 nacos-client 会对 `localhost:8848` 反复重连退避，每个测试上下文都卡数分钟。测试环境显式设 `NACOS_DISCOVERY_ENABLED=false`、`SPRING_CLOUD_NACOS_CONFIG_ENABLED=false`、`SPRING_CLOUD_SENTINEL_ENABLED=false` 三个开关（`.gitlab-ci.yml` 已带）。通用教训：**单元/集成测试不应隐式依赖外部中间件，凡有"无此依赖"开关的组件，测试环境都要显式关掉**。
 - 测试 Job 大量 `Failed to load ApplicationContext`：先滚到 Job 日志**最顶部**找黄色 `WARNING: Service ... probably didn't start properly`——多半是 service 容器没起来。经典坑：**Job 级 `variables:` 会整体注入 service 容器**，比如 `MYSQL_USER=root` 会让官方 mysql 镜像的启动脚本直接报错退出（它禁止 root 作为 MYSQL_USER）。解法：数据库初始化变量写在 service 自己的 `variables:` 里（优先级更高），并把泄漏的键显式置空。
 - 拉镜像报 `dial tcp ...:443: i/o timeout`（目标是 `registry-1.docker.io`）：境内直连 Docker Hub 不通。宿主机 `daemon.json` 的 `registry-mirrors` 和 dind 的 `--registry-mirror` 是否都配了（第 4.1 节）？都配了还超时，说明该加速站失效，换当期可用的。
 - `http://127.0.0.1:8850` 打不开：① 隧道窗口是否还开着（`ssh -L` 那个会话关了隧道就断）；② 首次 `deploy_compose` 是否已经跑过——没跑过服务器上还没有 Nacos 容器，先在服务器执行 `cd /opt/llm-gateway && docker compose ps` 确认 nacos 是 Up，`ss -tlnp | grep 8850` 确认在监听；③ 隧道命令要在自己电脑上执行，不是在服务器上。浏览器始终用自己电脑的，服务器上不需要也不该装浏览器。
