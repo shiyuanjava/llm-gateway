@@ -24,13 +24,20 @@ backend_test:
   services:
     - name: mysql:8.4
       alias: mysql
+      # 服务容器专属变量(优先级高于 Job 变量)。坑:GitLab 会把 Job 级 variables 整体注入
+      # service 容器,而官方 mysql 镜像禁止 MYSQL_USER=root——这里显式置空抵消泄漏。
+      # 该数据库只存在于当前 Job,结束后自动销毁。
+      variables:
+        MYSQL_ROOT_PASSWORD: "ci-test-mysql-password"
+        MYSQL_ROOT_HOST: "%"
+        MYSQL_DATABASE: "llm_gateway"
+        MYSQL_USER: ""
+        MYSQL_PASSWORD: ""
   variables:
-    # 集成测试会执行 Flyway 并访问真 MySQL；该数据库只存在于当前 Job，结束后自动销毁。
-    MYSQL_ROOT_PASSWORD: "ci-test-mysql-password"
-    MYSQL_ROOT_HOST: "%"
-    MYSQL_DATABASE: "llm_gateway"
+    # 以下供被测应用读取(application.yaml 的 ${MYSQL_*} 占位符);集成测试执行 Flyway 访问真 MySQL
     MYSQL_HOST: "mysql"
     MYSQL_PORT: "3306"
+    MYSQL_DB: "llm_gateway"
     MYSQL_USER: "root"
     MYSQL_PASSWORD: "ci-test-mysql-password"
     # 测试环境用环境变量注入即可(环境变量优先级高于 Nacos);生产密钥在 Nacos,不在 CI 变量里
@@ -39,6 +46,8 @@ backend_test:
     # Maven Central 国内直连极慢:本 Job 容器内写入阿里云 mirror(与 .m2 缓存叠加,首次绿后增量下载)
     - mkdir -p ~/.m2
     - printf '<settings><mirrors><mirror><id>aliyun</id><mirrorOf>central</mirrorOf><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' > ~/.m2/settings.xml
+    # MySQL 初始化需要十几秒,等 3306 真正可连再开跑(初始化期的临时实例不监听 TCP,探测可靠)
+    - timeout 120 bash -c 'until (echo > /dev/tcp/mysql/3306) 2>/dev/null; do sleep 2; done'
   script:
     - cd llm-gateway
     - mvn --batch-mode test
