@@ -1,7 +1,8 @@
 # ---- 构建:Node 20 + Vite ----
-# 国内网络受限时:在 npm ci 前加 RUN npm config set registry https://registry.npmmirror.com
 FROM node:20-alpine AS build
 WORKDIR /app
+# 国内网络:npm 官方源慢,走 npmmirror(海外构建可删除)
+RUN npm config set registry https://registry.npmmirror.com
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

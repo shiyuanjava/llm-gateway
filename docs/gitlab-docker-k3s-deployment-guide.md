@@ -568,6 +568,19 @@ kubectl -n llm-gateway rollout undo deployment/gateway
 
 两个部署 Job 都用了 `resource_group`：同一环境的部署强制串行，避免两个人同时点出竞态。`needs: build_images` 则保证部署永远发生在镜像推送成功之后。
 
+### 12.1 国内网络：四个下载点各自的加速
+
+境内服务器跑这条流水线，会从四个地方下载东西，逐一都要换成国内源，漏一个就会在对应环节超时或龟速：
+
+| 下载点 | 谁在用 | 加速方式 |
+|---|---|---|
+| Docker Hub（宿主机） | Runner 拉 Job/Service 镜像、部署时拉运行镜像 | `daemon.json` 的 `registry-mirrors`（第 4.1 节） |
+| Docker Hub（dind 内） | `build_images` 构建镜像时的 `FROM` | dind 服务的 `--registry-mirror` 参数（`.gitlab-ci.yml`） |
+| Maven Central | `backend_test` 与后端 Dockerfile 的 `mvn` | settings.xml 写 `mirrorOf=central` → 阿里云 `maven.aliyun.com/repository/public` |
+| npm registry | 前端两个 Job 与前端 Dockerfile 的 `npm ci` | `npm config set registry https://registry.npmmirror.com` |
+
+另外两点：verify Job 的 `.m2`/`.npm` 有 GitLab 缓存，首次跑绿之后后续只增量下载；镜像加速站时效性强，报 `i/o timeout` 先怀疑加速站失效，换当期可用的。
+
 ## 13. 以后如何用同样的方法部署其他项目
 
 假设以后新增 `order-service`。不要从复制命令开始，先回答六个问题：

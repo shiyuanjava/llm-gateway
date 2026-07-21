@@ -35,6 +35,10 @@ backend_test:
     MYSQL_PASSWORD: "ci-test-mysql-password"
     # 测试环境用环境变量注入即可(环境变量优先级高于 Nacos);生产密钥在 Nacos,不在 CI 变量里
     GATEWAY_JWT_SECRET: "ci-test-secret-0123456789abcdef0123456789abcdef"
+  before_script:
+    # Maven Central 国内直连极慢:本 Job 容器内写入阿里云 mirror(与 .m2 缓存叠加,首次绿后增量下载)
+    - mkdir -p ~/.m2
+    - printf '<settings><mirrors><mirror><id>aliyun</id><mirrorOf>central</mirrorOf><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' > ~/.m2/settings.xml
   script:
     - cd llm-gateway
     - mvn --batch-mode test
@@ -48,6 +52,8 @@ frontend_build:
   image: node:20-alpine
   before_script:
     - cd llm-gateway-ui
+    # npm 官方源国内慢,走 npmmirror
+    - npm config set registry https://registry.npmmirror.com
     - npm ci --cache .npm --prefer-offline
   script:
     - npm run build
@@ -63,6 +69,7 @@ frontend_format:
   image: node:20-alpine
   before_script:
     - cd llm-gateway-ui
+    - npm config set registry https://registry.npmmirror.com
     - npm ci --cache .npm --prefer-offline
   script:
     - npm run format:check
