@@ -132,18 +132,26 @@ sudo gitlab-ctl reconfigure
 | CI 里的 Docker-in-Docker（构建时推镜像） | `.gitlab-ci.yml` 中 dind 服务的 `--insecure-registry` 参数（已写好） |
 | K3s 的 containerd（K3s 拉镜像，第二阶段才需要） | `/etc/rancher/k3s/registries.yaml` |
 
-服务器本机：
+服务器本机（一个文件同时解决两件事：放行自建 HTTP Registry + 国内拉取 Docker Hub 的镜像加速——境内服务器直连 `registry-1.docker.io` 通常超时，必须配 mirror）：
 
 ```bash
 sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
 {
-  "insecure-registries": ["119.29.120.205:5050"]
+  "insecure-registries": ["119.29.120.205:5050"],
+  "registry-mirrors": [
+    "https://mirror.ccs.tencentyun.com",
+    "https://docker.m.daocloud.io"
+  ]
 }
 EOF
 sudo systemctl restart docker
+docker info | grep -A3 "Registry Mirrors"   # 确认生效
+docker pull node:20-alpine                   # 试拉一个,几十秒内成功即通
 ```
 
-生产环境应给 Registry 配 HTTPS（与 GitLab 同一套证书体系），然后把这三处放行全部删掉。
+两个键互不影响：`registry-mirrors` 只加速「从 Docker Hub 拉取」；`insecure-registries` 只放行你自己的 `119.29.120.205:5050`。腾讯云机器优先用 `mirror.ccs.tencentyun.com`（走内网）；镜像加速站时效性强，全部超时就搜索当期可用的地址替换。注意 dind 是独立守护进程、不读这个文件，所以 `.gitlab-ci.yml` 里 dind 的 `command` 同样带了 `--registry-mirror` 参数。
+
+生产环境应给 Registry 配 HTTPS（与 GitLab 同一套证书体系），然后把 insecure 放行全部删掉。
 
 ### 4.2 一开始就设置清理策略（小硬盘的关键）
 
@@ -292,7 +300,18 @@ sudo chmod 640 /opt/llm-gateway/.env
 
 ## 7. 第一次部署：跑流水线，然后在 Nacos 里填密钥
 
-推送代码后流水线自动跑 verify（后端测试 + 前端构建）和 image（构建并推送镜像）。然后在流水线页面手动点击 `deploy_compose`，这个 Job 做的事完全可预测：
+推送代码后流水线自动跑 verify（后端测试 + 前端构建）和 image（构建并推送镜像）。GitLab 界面上每一步在哪看：
+
+| 想做/想看什么 | 在哪 |
+|---|---|
+| 流水线有没有在跑、过没过 | 左侧 **构建 → 流水线**；最上面一行是最新一条，点流水线号进详情，能看到 verify / image / deploy 三列 Job |
+| 某个 Job 的实时日志 | 流水线详情页里点 Job 名字，日志实时滚动；失败先看最后几十行 |
+| 手动触发 `deploy_compose` | 流水线详情页 deploy 列，`deploy_compose` 旁边的 **▶** 按钮 |
+| 重跑一个失败的 Job | 进该 Job 页面，右上角 **重试**（Retry） |
+| 部署完成后的访问入口 | 左侧 **部署 → 环境**，`compose-production` 会带着 URL 链接 |
+| Runner 有没有接活 | Job 日志开头几行会写用了哪个 Runner（描述名） |
+
+然后在流水线页面手动点击 `deploy_compose`，这个 Job 做的事完全可预测：
 
 1. 校验 `/opt/llm-gateway/.env` 存在（不存在直接失败并提示）；
 2. 把 `docker-compose.yml` 和 `deploy/nacos-init/init.sh` 同步到 `/opt/llm-gateway`；
@@ -707,6 +726,7 @@ kubectl -n llm-gateway get events --sort-by=.lastTimestamp
 判断问题所在层次：
 
 - 测试 Job 失败：代码或依赖问题，还没构建镜像。
+- 拉镜像报 `dial tcp ...:443: i/o timeout`（目标是 `registry-1.docker.io`）：境内直连 Docker Hub 不通。宿主机 `daemon.json` 的 `registry-mirrors` 和 dind 的 `--registry-mirror` 是否都配了（第 4.1 节）？都配了还超时，说明该加速站失效，换当期可用的。
 - `http://127.0.0.1:8850` 打不开：① 隧道窗口是否还开着（`ssh -L` 那个会话关了隧道就断）；② 首次 `deploy_compose` 是否已经跑过——没跑过服务器上还没有 Nacos 容器，先在服务器执行 `cd /opt/llm-gateway && docker compose ps` 确认 nacos 是 Up，`ss -tlnp | grep 8850` 确认在监听；③ 隧道命令要在自己电脑上执行，不是在服务器上。浏览器始终用自己电脑的，服务器上不需要也不该装浏览器。
 - 镜像 Job 失败：dind/Registry 问题。日志出现 `http: server gave HTTP response to HTTPS client` → 三处 insecure-registry 放行少配了（第 4.1 节）。
 - gateway 反复重启且日志有 `GATEWAY_JWT_SECRET 未配置或长度不足` → Nacos 里没填密钥，或填错了 dataId/Group（应为 `llm-gateway.yaml` / `DEFAULT_GROUP`）。

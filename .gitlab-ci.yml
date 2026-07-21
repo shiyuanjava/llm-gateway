@@ -76,8 +76,13 @@ build_images:
   services:
     - name: docker:27-dind
       alias: docker
-      # 自建 Registry 暂走 HTTP 时,dind 侧要显式放行(换成你的 Registry 地址);上了 HTTPS 后删除本行
-      command: ["--insecure-registry=119.29.120.205:5050"]
+      # dind 是独立的 Docker 守护进程,不读宿主机 daemon.json:
+      # --insecure-registry 放行自建 HTTP Registry(上 HTTPS 后可删);
+      # --registry-mirror 国内直连 Docker Hub 不通,构建拉基础镜像走加速(失效就换当期可用的)
+      command:
+        - "--insecure-registry=119.29.120.205:5050"
+        - "--registry-mirror=https://mirror.ccs.tencentyun.com"
+        - "--registry-mirror=https://docker.m.daocloud.io"
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
