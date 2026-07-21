@@ -61,6 +61,19 @@
 
 本文按 Ubuntu 22.04/24.04 编写。GitLab 和本项目放在同一台机器时，建议至少 4 核 8 GB；同时运行 GitLab、构建任务、MySQL、Nacos 和 Java 服务时，8 核 16 GB 会更从容。
 
+**8 GB 单机全家桶必做两件事**，否则 CI 一跑重活就会内存耗尽、全机换页抖动（典型症状：Flyway 建一张表要一两分钟、所有日志以百倍慢速滚动、容器成片被 OOM 杀）：
+
+1. 加 4G swap 兜底：`fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`，并写入 `/etc/fstab`；
+2. 给 GitLab 瘦身（它默认按大内存机器配置，能省约 2G）——`/etc/gitlab/gitlab.rb` 追加后 `gitlab-ctl reconfigure`：
+
+```ruby
+puma['worker_processes'] = 0            # 单进程模式
+sidekiq['concurrency'] = 5              # 降后台并发
+prometheus_monitoring['enable'] = false # 关自带监控栈
+```
+
+另外错峰使用：Runner 的 `concurrent = 1` 保持不动；首次部署前网关会因等密钥反复重启，这段时间别同时跑重型 CI Job（或先 `docker compose stop gateway`）。
+
 建议的公网端口：
 
 | 端口 | 用途 | 建议 |
