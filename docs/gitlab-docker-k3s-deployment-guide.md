@@ -756,6 +756,7 @@ kubectl -n llm-gateway get events --sort-by=.lastTimestamp
 判断问题所在层次：
 
 - 测试 Job 失败：代码或依赖问题，还没构建镜像。
+- daemon 配置明明生效（`docker info` 能看到），部署 Job 的 `docker login` 却仍报 HTTPS 错：查 Job 环境里的 `DOCKER_HOST`。**全局 `variables:` 会注入每一个 Job**——像 `DOCKER_HOST=tcp://docker:2375` 这种只为 dind 服务的变量必须写在 `build_images` 自己的 `variables:` 里，否则 shell 部署 Runner 的 docker 也会被指去别处。与「Job 变量泄漏进 service 容器」是同一族坑：**变量作用域宁小勿大**。
 - 容器"起来又消失"、`docker ps -a` 里成片 `Exited (137)`、`dmesg` 有 `Out of memory`：小内存机器被 OOM 杀了。GitLab 本身就吃 4GB 上下,再叠全套中间件很容易触顶。标准保命操作是加 4G swap（`fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`,再写入 `/etc/fstab`）,代价是紧张时变慢。部署 Job 可反复重试,`docker compose up -d` 会把缺的容器补齐,数据卷不受影响。
 - `docker login`/push/pull Registry 报 `Client.Timeout exceeded`（超时而非拒绝）：多半是把 Registry 地址写成了公网 IP——机器内部访问自己的公网 IP 走 NAT 回环，云上常不通。Registry 统一用内网 IP（第 4 节）；改完 `gitlab.rb` 要 `gitlab-ctl reconfigure`，三处 insecure 放行（4.1 节）与 CI 里 dind 参数同步改。
 - 测试 Job 卡在启动早期（如 `HV000001` 之后长时间无输出）：环境里没有 Nacos，而 nacos-client 会对 `localhost:8848` 反复重连退避，每个测试上下文都卡数分钟。测试环境显式设 `NACOS_DISCOVERY_ENABLED=false`、`SPRING_CLOUD_NACOS_CONFIG_ENABLED=false`、`SPRING_CLOUD_SENTINEL_ENABLED=false` 三个开关（`.gitlab-ci.yml` 已带）。通用教训：**单元/集成测试不应隐式依赖外部中间件，凡有"无此依赖"开关的组件，测试环境都要显式关掉**。

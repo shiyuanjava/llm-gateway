@@ -7,9 +7,6 @@ variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   GATEWAY_IMAGE: "$CI_REGISTRY_IMAGE/gateway:$CI_COMMIT_SHA"
   UI_IMAGE: "$CI_REGISTRY_IMAGE/ui:$CI_COMMIT_SHA"
-  # Docker-in-Docker 仅存在于隔离的 Job 网络；显式关闭该内部链路 TLS，避免 Runner 还需挂载证书目录。
-  DOCKER_HOST: "tcp://docker:2375"
-  DOCKER_TLS_CERTDIR: ""
   # 浅克隆:服务器磁盘小,所有 Job 都不需要完整历史
   GIT_DEPTH: "20"
 
@@ -94,6 +91,11 @@ frontend_format:
 build_images:
   stage: image
   image: docker:27-cli
+  variables:
+    # Docker-in-Docker 仅存在于本 Job 的隔离网络;关闭该内部链路 TLS,避免 Runner 还需挂载证书目录。
+    # 必须限定在本 Job:若放全局,DOCKER_HOST 会注入所有 Job,把 shell 部署 Runner 的 docker 也指去 tcp://docker:2375
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
   services:
     - name: docker:27-dind
       alias: docker
@@ -129,6 +131,8 @@ deploy_compose:
   variables:
     GIT_DEPTH: "1"
     DEPLOY_DIR: /opt/llm-gateway
+    # 显式钉死本机 daemon(insecure-registries 等配置在它身上),防止任何环境注入把 docker 指去别处
+    DOCKER_HOST: "unix:///var/run/docker.sock"
   script:
     - test -f "$DEPLOY_DIR/.env" || { echo "缺少 $DEPLOY_DIR/.env(MYSQL_ROOT_PASSWORD/REDIS_PASSWORD/UI_PORT),按部署文档初始化一次"; exit 1; }
     - install -D -m 644 llm-gateway/docker-compose.yml "$DEPLOY_DIR/docker-compose.yml"
