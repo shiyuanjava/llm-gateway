@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# 单节点学习/小型生产环境：安装 K3s，保留默认 Traefik 与 local-path 存储类。
+# 单节点学习/小型生产环境：安装 K3s,保留默认 local-path 存储类。
+# 刻意禁用自带的 Traefik:它会经 iptables 抢占宿主机 80/443,与同机的 GitLab nginx 冲突
+# (症状:GitLab 网页变成朴素的 "404 page not found");本项目走 NodePort,用不到 Ingress。
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -7,7 +9,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-curl -sfL https://get.k3s.io | sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik" sh -
 systemctl enable --now k3s
 
 echo "等待节点 Ready..."

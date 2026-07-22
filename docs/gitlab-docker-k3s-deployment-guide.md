@@ -456,11 +456,25 @@ docker system df
 
 K3s 是符合 Kubernetes API 的轻量发行版，适合单机云服务器。它默认带 containerd（容器运行时）、CoreDNS、local-path-provisioner（自动创建本机 PVC）、Traefik（Ingress）。
 
+**与 GitLab 同机时必须禁用 Traefik**：它会通过 iptables 抢占宿主机的 80/443（即使 GitLab nginx 已经在监听也会被截流），装完的瞬间 GitLab 网页就会变成一行朴素的 `404 page not found`。本项目的服务经 NodePort 30081 暴露，用不到 Ingress。
+
 安装（脚本内容即仓库里的 `deploy/scripts/install-k3s-ubuntu.sh`，也可直接在 GitLab 网页上打开该文件复制执行）：
 
 ```bash
-curl -sfL https://get.k3s.io | sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik" sh -
 sudo k3s kubectl get nodes -o wide
+```
+
+如果已经按默认方式装完、GitLab 404 了，补救：
+
+```bash
+sudo tee /etc/rancher/k3s/config.yaml >/dev/null <<'EOF'
+disable:
+  - traefik
+EOF
+sudo systemctl restart k3s
+sudo k3s kubectl -n kube-system delete helmchart traefik traefik-crd --ignore-not-found
+sudo k3s kubectl -n kube-system delete svc traefik --ignore-not-found
 ```
 
 为了少写 `sudo k3s kubectl`，给运维用户复制 kubeconfig：
@@ -519,19 +533,25 @@ kubectl -n llm-gateway create secret docker-registry gitlab-registry \
 
 ### 11.3 配置 CI 并部署
 
-在 GitLab CI/CD Variables 添加唯一的平台级密钥：
+在 GitLab **设置 → CI/CD → 变量 → 添加变量** 创建唯一的平台级密钥 `KUBE_CONFIG`，表单逐项：
 
-| 变量 | 类型 | 说明 |
+| 表单项 | 选/填什么 | 为什么 |
 |---|---|---|
-| `KUBE_CONFIG` | File（勾选 Protected） | 可访问 K3s API 的 kubeconfig |
+| 类型 | **文件（File）** | CI 里 `export KUBECONFIG="$KUBE_CONFIG"` 期望文件路径；File 变量在 Job 里就是临时文件的路径 |
+| 环境 | 默认（所有环境） | |
+| 可见性 | **可见的** | 掩码类选项要求单行值，kubeconfig 是多行 YAML，选掩码会保存失败 |
+| 保护变量 | **勾选** | 只导出给受保护分支（main）的流水线；若 Job 里读不到，先确认 main 是受保护分支 |
+| 展开变量引用 | **取消勾选** | 内容里的 `$` 不应被展开 |
+| 键 | `KUBE_CONFIG` | 与 `.gitlab-ci.yml` 一致 |
+| 值 | 下面命令的完整输出 | |
 
-生成方法——把 API 地址从 `127.0.0.1` 改成 Runner 能连的地址：
+生成值——把 API 地址从 `127.0.0.1` 换成内网 IP（Runner 容器直连本机内网地址，无需对公网开放 6443；内网 IP 在 K3s 默认证书 SAN 里，TLS 校验可正常通过）：
 
 ```bash
-sudo sed 's/127.0.0.1/<服务器内网IP>/' /etc/rancher/k3s/k3s.yaml
+sudo sed 's/127.0.0.1/10.1.0.16/' /etc/rancher/k3s/k3s.yaml
 ```
 
-把输出完整粘贴进 File 变量。安全组的 6443 只允许 Runner 来源 IP；若证书不包含所用地址，重装 K3s 时加 `--tls-san <地址>`，不要关闭 TLS 校验。
+保存后注意：`deploy_k3s` 按钮只出现在**新创建的流水线**里（规则在流水线创建时求值），推一次代码或手动 Run pipeline 即可看到。
 
 顺带说明：`deploy_k3s` 的规则里带了 `&& $KUBE_CONFIG`——没配置该变量时它根本不会出现在流水线里，第一阶段不会误点。配置了 `KUBE_CONFIG` 之后它才出现（若配置后仍不出现，把 `.gitlab-ci.yml` 里该 Job 规则中的 `&& $KUBE_CONFIG` 删掉即可，脚本内还有一道同样的检查兜底）。
 
@@ -755,6 +775,7 @@ kubectl -n llm-gateway get events --sort-by=.lastTimestamp
 
 判断问题所在层次：
 
+- 装完 K3s 后 GitLab 网页变成一行朴素的 `404 page not found`：K3s 自带的 Traefik 经 iptables 截走了 80/443。按第 11 节的补救命令禁用 Traefik。判读技巧：GitLab 的 404 是带样式的页面，Go 服务的 404 是纯文本一行——**看 404 长什么样就能猜到是谁在应答**。
 - 测试 Job 失败：代码或依赖问题，还没构建镜像。
 - daemon 配置明明生效（`docker info` 能看到），部署 Job 的 `docker login` 却仍报 HTTPS 错：查 Job 环境里的 `DOCKER_HOST`。**全局 `variables:` 会注入每一个 Job**——像 `DOCKER_HOST=tcp://docker:2375` 这种只为 dind 服务的变量必须写在 `build_images` 自己的 `variables:` 里，否则 shell 部署 Runner 的 docker 也会被指去别处。与「Job 变量泄漏进 service 容器」是同一族坑：**变量作用域宁小勿大**。
 - 容器"起来又消失"、`docker ps -a` 里成片 `Exited (137)`、`dmesg` 有 `Out of memory`：小内存机器被 OOM 杀了。GitLab 本身就吃 4GB 上下,再叠全套中间件很容易触顶。标准保命操作是加 4G swap（`fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`,再写入 `/etc/fstab`）,代价是紧张时变慢。部署 Job 可反复重试,`docker compose up -d` 会把缺的容器补齐,数据卷不受影响。
