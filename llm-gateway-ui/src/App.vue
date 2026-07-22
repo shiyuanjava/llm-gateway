@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh, User, Fold, Expand } from '@element-plus/icons-vue'
 import { metaApi } from './api'
 import { clearSession, currentUsername } from './auth/session'
+import GatewayLogo from './components/GatewayLogo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -104,9 +105,10 @@ watch(isLogin, (v) => {
       class="sidebar"
       :class="{ 'is-collapsed': collapsed }"
     >
+      <div class="sidebar-fx" aria-hidden="true"></div>
       <div class="brand">
         <div class="brand-mark">
-          <el-icon :size="20"><Cpu /></el-icon>
+          <GatewayLogo :size="collapsed ? 30 : 34" />
         </div>
         <div v-if="!collapsed" class="brand-text">
           <div class="brand-name">LLM Gateway</div>
@@ -187,12 +189,35 @@ watch(isLogin, (v) => {
 }
 
 .sidebar {
+  position: relative;
   background: var(--app-sidebar-bg);
   display: flex;
   flex-direction: column;
   border-right: none;
   transition: width 0.2s ease;
   overflow: hidden;
+}
+/* 侧栏动态科技底纹:网格 + 缓慢流动的极光渐变,位于内容之下 */
+.sidebar-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(120% 60% at 15% 0%, rgba(79, 70, 229, 0.45), transparent 60%),
+    radial-gradient(90% 50% at 100% 100%, rgba(34, 211, 238, 0.22), transparent 60%),
+    linear-gradient(rgba(148, 163, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 255, 0.06) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 28px,
+    28px 100%;
+  animation: sidebar-aurora 16s ease-in-out infinite alternate;
+}
+.sidebar > *:not(.sidebar-fx) {
+  position: relative;
+  z-index: 1;
 }
 .brand {
   display: flex;
@@ -202,18 +227,25 @@ watch(isLogin, (v) => {
   color: #fff;
 }
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--el-color-primary), #8b5cf6);
-  color: #fff;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.35), rgba(139, 92, 246, 0.28));
+  border: 1px solid rgba(165, 180, 252, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(129, 140, 248, 0.15),
+    0 6px 20px rgba(79, 70, 229, 0.35);
 }
 .brand-name {
   font-weight: 700;
   font-size: 15px;
   line-height: 1.1;
+  background: linear-gradient(90deg, #ffffff, #c7d2fe 55%, #a5f3fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .brand-sub {
   font-size: 12px;
@@ -232,14 +264,32 @@ watch(isLogin, (v) => {
   border-radius: 8px;
   margin: 4px 0;
   height: 44px;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .menu :deep(.el-menu-item:hover) {
   background: var(--app-sidebar-bg-soft);
   color: #fff;
 }
 .menu :deep(.el-menu-item.is-active) {
-  background: var(--el-color-primary);
+  background: linear-gradient(90deg, var(--el-color-primary), #6d28d9);
   color: #fff;
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.4);
+}
+/* 激活项左侧发光指示条 */
+.menu :deep(.el-menu-item.is-active)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 0 3px 3px 0;
+  background: #a5f3fc;
+  box-shadow: 0 0 10px rgba(165, 243, 252, 0.9);
 }
 .menu :deep(.el-menu-item.is-active .el-icon) {
   color: #fff;
@@ -295,6 +345,7 @@ watch(isLogin, (v) => {
 }
 
 .header {
+  position: relative;
   height: 68px;
   background: var(--app-surface);
   border-bottom: 1px solid var(--app-border);
@@ -302,6 +353,26 @@ watch(isLogin, (v) => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
+}
+/* 顶部动态渐变发光线 */
+.header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--el-color-primary),
+    #22d3ee,
+    #8b5cf6,
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: header-sheen 8s linear infinite;
+  opacity: 0.8;
 }
 .header-title {
   font-size: 17px;
@@ -338,6 +409,42 @@ watch(isLogin, (v) => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+@keyframes sidebar-aurora {
+  0% {
+    background-position:
+      0% 0%,
+      100% 100%,
+      0 0,
+      0 0;
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    background-position:
+      20% 10%,
+      80% 90%,
+      0 0,
+      0 0;
+    filter: hue-rotate(-18deg);
+  }
+}
+@keyframes header-sheen {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-fx {
+    animation: none;
+  }
+  .header::after {
+    animation: none;
+  }
 }
 
 @media (max-width: 768px) {

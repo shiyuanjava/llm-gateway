@@ -136,10 +136,36 @@ onMounted(load)
   margin-bottom: 24px;
 }
 .stat-card {
+  position: relative;
   padding: 18px 20px;
   display: flex;
   align-items: center;
   gap: 16px;
+  overflow: hidden;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+/* 顶部渐变发光条,悬停时点亮 */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--el-color-primary), #22d3ee, #8b5cf6);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 1px 2px rgba(17, 24, 39, 0.04),
+    0 12px 28px rgba(79, 70, 229, 0.16);
+}
+.stat-card:hover::before {
+  opacity: 1;
 }
 .stat-icon {
   width: 48px;
@@ -147,6 +173,13 @@ onMounted(load)
   border-radius: 12px;
   display: grid;
   place-items: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-card,
+  .stat-card:hover {
+    transition: none;
+    transform: none;
+  }
 }
 .stat-label {
   font-size: 13px;

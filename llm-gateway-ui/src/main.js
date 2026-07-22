@@ -5,17 +5,8 @@ import { vLoading } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 import 'element-plus/es/components/loading/style/css'
-// 只全局注册 App.vue 品牌图标与路由 meta 里按名字引用的菜单图标;各视图自己 import 所需图标
-import {
-  Cpu,
-  DataLine,
-  Key,
-  Share,
-  Money,
-  Tickets,
-  Stamp,
-  ChatDotRound,
-} from '@element-plus/icons-vue'
+// 只全局注册路由 meta 里按名字引用的菜单图标;各视图自己 import 所需图标
+import { DataLine, Key, Share, Money, Tickets, Stamp, ChatDotRound } from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
@@ -24,7 +15,7 @@ import './styles/main.css'
 const app = createApp(App)
 
 app.directive('loading', vLoading)
-for (const icon of [Cpu, DataLine, Key, Share, Money, Tickets, Stamp, ChatDotRound]) {
+for (const icon of [DataLine, Key, Share, Money, Tickets, Stamp, ChatDotRound]) {
   app.component(icon.name, icon)
 }
 
