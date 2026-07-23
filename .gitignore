@@ -11,4 +11,4 @@
 # 任意层级的本地工具与 IDE 产物
 .claude/
 .idea/
-.docs
+.docs/
