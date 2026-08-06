@@ -1,9 +1,21 @@
 <script setup>
-import { onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Refresh, Edit, Delete, CopyDocument } from '@element-plus/icons-vue'
+import {
+  Plus,
+  RefreshCw,
+  SquarePen,
+  Trash2,
+  Copy,
+  KeyRound,
+  TriangleAlert,
+  UsersRound,
+  ShieldCheck,
+} from 'lucide-vue-next'
 import { apiKeyApi } from '../api'
 import { useCrudDialog } from '../composables/useCrudDialog'
+import PageIntro from '../components/PageIntro.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const {
   loading,
@@ -33,6 +45,8 @@ const {
 
 // 一次性展示的明文 Key(仅存内存,关闭即清)
 const created = reactive({ visible: false, apiKey: '' })
+const activeCount = computed(() => rows.value.filter((row) => row.enabled !== false).length)
+const tenantCount = computed(() => new Set(rows.value.map((row) => row.tenant).filter(Boolean)).size)
 
 async function copyKey() {
   try {
@@ -61,28 +75,66 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">API Key</h2>
-        <div class="page-subtitle">密钥 → 租户 / 角色 / 可用模型,改动即时生效</div>
+    <PageIntro
+      index="01"
+      eyebrow="Identity layer / credentials"
+      title="API Key"
+      subtitle="密钥映射到租户、角色与可用模型。创建后的明文只在本次会话中出现。"
+    >
+      <template #actions>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus :stroke-width="1.8" /></el-icon>&nbsp;新增 Key
+        </el-button>
+      </template>
+    </PageIntro>
+
+    <div class="metric-strip rise" style="--i: 1">
+      <div class="metric-cell" style="--metric-color: var(--accent-cyan)">
+        <div class="metric-label"><KeyRound :size="14" :stroke-width="1.7" /> CREDENTIALS</div>
+        <div class="metric-value tabular-nums">{{ rows.length }}</div>
+        <div class="metric-note">密钥总数</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-lime)">
+        <div class="metric-label"><ShieldCheck :size="14" :stroke-width="1.7" /> ACTIVE</div>
+        <div class="metric-value tabular-nums">{{ activeCount }}</div>
+        <div class="metric-note">当前启用</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-violet)">
+        <div class="metric-label"><UsersRound :size="14" :stroke-width="1.7" /> TENANTS</div>
+        <div class="metric-value tabular-nums">{{ tenantCount }}</div>
+        <div class="metric-note">已接入租户</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-pink)">
+        <div class="metric-label"><TriangleAlert :size="14" :stroke-width="1.7" /> EXPOSURE</div>
+        <div class="metric-value">ONE-TIME</div>
+        <div class="metric-note">明文展示策略</div>
       </div>
     </div>
 
-    <div class="surface" style="padding: 16px">
-      <div class="toolbar">
-        <el-button type="primary" @click="openCreate"
-          ><el-icon><Plus /></el-icon>&nbsp;新增 Key</el-button
-        >
-        <div class="spacer"></div>
-        <el-button :loading="loading" @click="load"
-          ><el-icon><Refresh /></el-icon>&nbsp;刷新</el-button
-        >
+    <div class="surface data-panel rise" style="--i: 2">
+      <div class="panel-heading">
+        <div class="panel-heading-icon"><KeyRound :size="17" :stroke-width="1.7" /></div>
+        <div class="panel-heading-copy">
+          <div class="panel-heading-title">密钥清单</div>
+          <div class="panel-heading-note">ACTIVE CREDENTIALS / SHA-256 REGISTRY</div>
+        </div>
+        <div class="panel-heading-rule"></div>
+        <el-button :loading="loading" @click="load">
+          <el-icon><RefreshCw :stroke-width="1.8" /></el-icon>&nbsp;刷新
+        </el-button>
       </div>
 
-      <el-table :data="rows" v-loading="loading" style="width: 100%" empty-text="暂无 API Key">
+      <el-table :data="rows" v-loading="loading" style="width: 100%">
+        <template #empty>
+          <EmptyState
+            :icon="KeyRound"
+            title="尚无 API Key"
+            hint="新建一个密钥,把租户接入网关"
+          />
+        </template>
         <el-table-column prop="keyPrefix" label="Key 前缀" min-width="160">
           <template #default="{ row }"
-            ><code>{{ row.keyPrefix }}…</code></template
+            ><span class="code-chip">{{ row.keyPrefix }}…</span></template
           >
         </el-table-column>
         <el-table-column prop="tenant" label="租户" width="130" />
@@ -93,20 +145,20 @@ onMounted(load)
           min-width="160"
           show-overflow-tooltip
         />
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.enabled !== false ? 'success' : 'info'" effect="light" size="small">
+            <span class="status" :class="row.enabled !== false ? 'is-success' : 'is-info'">
               {{ row.enabled !== false ? '启用' : '停用' }}
-            </el-tag>
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)"
-              ><el-icon><Edit /></el-icon>编辑</el-button
+              ><el-icon><SquarePen :stroke-width="1.8" /></el-icon>编辑</el-button
             >
             <el-button link type="danger" :loading="deleting[row.id]" @click="remove(row)"
-              ><el-icon><Delete /></el-icon>删除</el-button
+              ><el-icon><Trash2 :stroke-width="1.8" /></el-icon>删除</el-button
             >
           </template>
         </el-table-column>
@@ -123,9 +175,9 @@ onMounted(load)
           v-if="dialog.mode === 'create'"
           type="info"
           :closable="false"
+          :show-icon="false"
           style="margin-bottom: 16px"
-          title="Key 由服务端生成,创建成功后仅展示一次"
-        />
+        ><template #title><span class="alert-title"><ShieldCheck :size="15" />Key 由服务端生成,创建成功后仅展示一次</span></template></el-alert>
         <el-form-item label="租户" prop="tenant">
           <el-input v-model="form.tenant" placeholder="tenant-a" />
         </el-form-item>
@@ -156,13 +208,13 @@ onMounted(load)
       <el-alert
         type="warning"
         :closable="false"
-        title="请立即保存,关闭后无法再次查看完整 Key"
+        :show-icon="false"
         style="margin-bottom: 16px"
-      />
+      ><template #title><span class="alert-title"><TriangleAlert :size="15" />请立即保存,关闭后无法再次查看完整 Key</span></template></el-alert>
       <div class="key-box">
         <code>{{ created.apiKey }}</code>
         <el-button link type="primary" @click="copyKey"
-          ><el-icon><CopyDocument /></el-icon>复制</el-button
+          ><el-icon><Copy :stroke-width="1.8" /></el-icon>复制</el-button
         >
       </div>
       <template #footer>
@@ -173,9 +225,17 @@ onMounted(load)
 </template>
 
 <style scoped>
+.alert-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 code {
+  font-family: var(--font-mono);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary-dark-2);
+  border: 1px solid var(--el-color-primary-light-7);
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 13px;

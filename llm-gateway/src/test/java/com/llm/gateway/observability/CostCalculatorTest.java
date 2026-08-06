@@ -21,6 +21,8 @@ class CostCalculatorTest {
     private final PricingRepository repository = () -> List.of(
             new PricingRecord("gpt-4o-mini", 0.00015, 0.00060, null, null),
             new PricingRecord("claude-opus-4-8", 0.015, 0.075, 0.0015, 0.01875),
+            new PricingRecord("deepseek-v4-flash", 0.00014, 0.00028, 0.0000028, null),
+            new PricingRecord("deepseek-v4-pro", 0.000435, 0.00087, 0.000003625, null),
             new PricingRecord("mock*", 0.0, 0.0, null, null),
             new PricingRecord("mock-d*", 0.001, 0.002, null, null));
 
@@ -51,6 +53,29 @@ class CostCalculatorTest {
     @Test
     void shouldPriceCacheWriteSeparately() {
         assertEquals(0.015 + 0.01875, calculator.cost("claude-opus-4-8", Usage.of(2000, 0, 0, 1000)), 1e-9);
+    }
+
+    @Test
+    void shouldApplyDeepSeekV4FlashMissHitAndOutputPrices() {
+        // 1000 miss input + 1000 cache-hit input + 1000 output.
+        assertEquals(
+                0.00014 + 0.0000028 + 0.00028,
+                calculator.cost("deepseek-v4-flash", Usage.of(2000, 1000, 1000, 0)),
+                1e-12);
+    }
+
+    @Test
+    void shouldApplyDeepSeekV4ProMissHitAndOutputPrices() {
+        assertEquals(
+                0.000435 + 0.000003625 + 0.00087,
+                calculator.cost("deepseek-v4-pro", Usage.of(2000, 1000, 1000, 0)),
+                1e-12);
+    }
+
+    @Test
+    void shouldClampMalformedCacheBreakdownBeforeBilling() {
+        Usage malformed = new Usage(100, -20, 80, 1_000, 1_000);
+        assertEquals(100 / 1000.0 * 0.0000028, calculator.cost("deepseek-v4-flash", malformed), 1e-12);
     }
 
     @Test

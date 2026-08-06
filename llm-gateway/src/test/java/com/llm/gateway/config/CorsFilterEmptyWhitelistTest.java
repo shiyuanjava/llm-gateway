@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(
         properties = {
             "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-            "gateway.admin.allowed-origins="
+            "gateway.cors.allowed-origins="
         })
 @AutoConfigureMockMvc
 class CorsFilterEmptyWhitelistTest {

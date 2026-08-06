@@ -44,12 +44,27 @@ public record Usage(
             @JsonProperty("prompt_tokens") int promptTokens,
             @JsonProperty("completion_tokens") int completionTokens,
             @JsonProperty("total_tokens") Integer totalTokens,
-            @JsonProperty("prompt_tokens_details") PromptTokensDetails promptTokensDetails) {
-        int cacheRead = promptTokensDetails == null || promptTokensDetails.cachedTokens() == null
-                ? 0
-                : promptTokensDetails.cachedTokens();
+            @JsonProperty("prompt_tokens_details") PromptTokensDetails promptTokensDetails,
+            @JsonProperty("prompt_cache_hit_tokens") Integer promptCacheHitTokens,
+            @JsonProperty("prompt_cache_miss_tokens") Integer promptCacheMissTokens) {
+        // DeepSeek exposes cache accounting at the top level, while most
+        // OpenAI-compatible providers use prompt_tokens_details.cached_tokens.
+        // Prefer the standard field when it is populated and fall back to the
+        // DeepSeek field otherwise (the same normalization used by new-api).
+        int cacheRead = nonNegative(promptTokensDetails == null ? null : promptTokensDetails.cachedTokens());
+        if (cacheRead == 0) {
+            cacheRead = nonNegative(promptCacheHitTokens);
+        }
+        // prompt_tokens is the complete input count in the gateway contract.
+        // Clamp malformed upstream details so a bad cache signal cannot create
+        // a negative uncached count or an over-sized charge.
+        cacheRead = Math.min(cacheRead, Math.max(0, promptTokens));
         int total = totalTokens == null ? promptTokens + completionTokens : totalTokens;
         return new Usage(promptTokens, completionTokens, total, cacheRead, 0);
+    }
+
+    private static int nonNegative(Integer value) {
+        return value == null ? 0 : Math.max(0, value);
     }
 
     /**

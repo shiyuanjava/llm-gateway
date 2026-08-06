@@ -1,8 +1,19 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, RefreshLeft } from '@element-plus/icons-vue'
+import {
+  Search,
+  RotateCcw,
+  ScrollText,
+  CircleCheck,
+  Timer,
+  DatabaseZap,
+  CircleX,
+  ArrowRight,
+} from 'lucide-vue-next'
 import { logApi } from '../api'
+import PageIntro from '../components/PageIntro.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const loading = ref(false)
 const rows = ref([])
@@ -13,6 +24,12 @@ const loadError = ref(false)
 let loadSeq = 0
 const query = reactive({ tenant: '', status: '', model: '', page: 1, size: 20 })
 const timeRange = ref([])
+const successCount = computed(() => rows.value.filter((row) => row.status === 'success').length)
+const cacheCount = computed(() => rows.value.filter((row) => row.status === 'cache_hit').length)
+const avgLatency = computed(() => {
+  if (!rows.value.length) return 0
+  return Math.round(rows.value.reduce((sum, row) => sum + Number(row.latencyMs || 0), 0) / rows.value.length)
+})
 
 const statusMeta = {
   success: { type: 'success', label: '成功' },
@@ -82,14 +99,47 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">请求日志</h2>
+    <PageIntro
+      index="04"
+      eyebrow="Observability / request stream"
+      title="请求日志"
+      subtitle="检索每一次模型调用的路由结果、Token 计数、成本与延迟。"
+    />
+
+    <div class="metric-strip rise" style="--i: 1">
+      <div class="metric-cell" style="--metric-color: var(--accent-cyan)">
+        <div class="metric-label"><ScrollText :size="14" :stroke-width="1.7" /> WINDOW</div>
+        <div class="metric-value tabular-nums">{{ total.toLocaleString('en-US') }}</div>
+        <div class="metric-note">匹配记录总数</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-lime)">
+        <div class="metric-label"><CircleCheck :size="14" :stroke-width="1.7" /> SUCCESS</div>
+        <div class="metric-value tabular-nums">{{ successCount }}</div>
+        <div class="metric-note">当前页成功</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-violet)">
+        <div class="metric-label"><DatabaseZap :size="14" :stroke-width="1.7" /> CACHE HIT</div>
+        <div class="metric-value tabular-nums">{{ cacheCount }}</div>
+        <div class="metric-note">缓存命中</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-pink)">
+        <div class="metric-label"><Timer :size="14" :stroke-width="1.7" /> LATENCY</div>
+        <div class="metric-value tabular-nums">{{ fmtInt(avgLatency) }} ms</div>
+        <div class="metric-note">当前页平均延迟</div>
       </div>
     </div>
 
-    <div class="surface" style="padding: 16px">
-      <div class="toolbar">
+    <div class="surface data-panel rise" style="--i: 2">
+      <div class="panel-heading">
+        <div class="panel-heading-icon"><ScrollText :size="17" :stroke-width="1.7" /></div>
+        <div class="panel-heading-copy">
+          <div class="panel-heading-title">请求事件流</div>
+          <div class="panel-heading-note">AUDIT / USAGE / COST / ROUTE</div>
+        </div>
+        <div class="panel-heading-rule"></div>
+        <span class="live-counter mono">PAGE {{ query.page.toString().padStart(2, '0') }}</span>
+      </div>
+      <div class="filter-deck">
         <el-input
           v-model="query.tenant"
           placeholder="租户"
@@ -121,19 +171,23 @@ onMounted(load)
           style="width: 340px"
         />
         <el-button type="primary" :loading="loading" @click="search"
-          ><el-icon><Search /></el-icon>&nbsp;查询</el-button
+          ><el-icon><Search :stroke-width="1.8" /></el-icon>&nbsp;查询</el-button
         >
+        <div class="filter-spacer"></div>
         <el-button @click="reset"
-          ><el-icon><RefreshLeft /></el-icon>&nbsp;重置</el-button
+          ><el-icon><RotateCcw :stroke-width="1.8" /></el-icon>&nbsp;重置</el-button
         >
       </div>
 
       <el-table :data="rows" v-loading="loading" style="width: 100%">
         <template #empty>
-          <el-empty v-if="loadError" description="加载失败" :image-size="60">
-            <el-button type="primary" size="small" @click="load">重试</el-button>
-          </el-empty>
-          <span v-else>暂无日志</span>
+          <EmptyState
+            :icon="loadError ? CircleX : ScrollText"
+            :title="loadError ? '读取日志失败' : '暂无日志'"
+            :hint="loadError ? '检查网关连接后重新拉取' : '调整筛选条件或等待第一条请求进入'"
+          >
+            <el-button v-if="loadError" type="primary" size="small" @click="load">重试</el-button>
+          </EmptyState>
         </template>
         <el-table-column label="时间" width="170">
           <template #default="{ row }"
@@ -141,10 +195,10 @@ onMounted(load)
           >
         </el-table-column>
         <el-table-column prop="tenant" label="租户" width="110" />
-        <el-table-column label="请求 → 实际模型" min-width="220">
+        <el-table-column label="请求 / 实际模型" min-width="220">
           <template #default="{ row }">
             <span class="mono">{{ row.requestedModel }}</span>
-            <span class="muted"> → </span>
+            <ArrowRight class="model-arrow" :size="13" :stroke-width="1.7" aria-hidden="true" />
             <span class="mono">{{ row.servedModel || '—' }}</span>
           </template>
         </el-table-column>
@@ -201,17 +255,30 @@ onMounted(load)
           @size-change="onSize"
         />
       </div>
+      <div class="data-footnote mono">LOG STREAM / {{ rows.length }} RECORDS IN CURRENT PAGE</div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.live-counter {
+  color: var(--accent-lime);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
 .muted {
   color: var(--app-text-secondary);
+}
+
+.model-arrow {
+  margin: 0 6px;
+  vertical-align: -2px;
+  color: var(--accent-cyan);
 }
 .pager {
   display: flex;

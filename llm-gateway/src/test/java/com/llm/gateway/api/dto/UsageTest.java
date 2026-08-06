@@ -34,6 +34,31 @@ class UsageTest {
     }
 
     @Test
+    void normalizesDeepSeekTopLevelCacheHitTokens() {
+        String json =
+                """
+                {"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,
+                 "prompt_tokens_details":{"cached_tokens":0},
+                 "prompt_cache_hit_tokens":64,"prompt_cache_miss_tokens":36}""";
+        Usage usage = mapper.readValue(json, Usage.class);
+        assertEquals(64, usage.cacheReadTokens());
+        assertEquals(0, usage.cacheCreationTokens());
+    }
+
+    @Test
+    void prefersStandardCachedTokensAndClampsMalformedDeepSeekDetails() {
+        Usage standard = mapper.readValue(
+                "{\"prompt_tokens\":100,\"completion_tokens\":1,\"prompt_tokens_details\":{\"cached_tokens\":12},\"prompt_cache_hit_tokens\":64}",
+                Usage.class);
+        assertEquals(12, standard.cacheReadTokens());
+
+        Usage oversized = mapper.readValue(
+                "{\"prompt_tokens\":10,\"completion_tokens\":1,\"prompt_cache_hit_tokens\":999}",
+                Usage.class);
+        assertEquals(10, oversized.cacheReadTokens());
+    }
+
+    @Test
     void toleratesMissingDetails() {
         Usage usage = mapper.readValue("{\"prompt_tokens\":7,\"completion_tokens\":2,\"total_tokens\":9}", Usage.class);
         assertEquals(0, usage.cacheReadTokens());

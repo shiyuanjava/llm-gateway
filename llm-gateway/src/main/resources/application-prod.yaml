@@ -9,10 +9,15 @@ spring:
       # 演示 Key(sk-demo-tenant-a/b 明文公开)不进生产:V3 迁移按此占位符执行清除
       purge_demo_api_keys: "true"
 
+# gateway 仅经受信任的 nginx/集群入口访问;解析 X-Forwarded-* 后,审计可记录真实客户端 IP。
+server:
+  forward-headers-strategy: framework
+
 gateway:
+  cors:
+    # 同源反代部署默认零跨域;分域时同时放行管理 API 与 Playground /v1。
+    # 旧 GATEWAY_ADMIN_ALLOWED_ORIGINS / gateway.admin.allowed-origins 仍作为兼容回退。
+    allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:${GATEWAY_ADMIN_ALLOWED_ORIGINS:${gateway.admin.allowed-origins:}}}
   cache:
     # compose 部署设 GATEWAY_CACHE_STORE=redis;不设则与开发一致走内存
     store: ${GATEWAY_CACHE_STORE:memory}
-  admin:
-    # 同源反代部署默认零跨域;确需分域时用 GATEWAY_ADMIN_ALLOWED_ORIGINS 打开(逗号分隔)
-    allowed-origins: ${GATEWAY_ADMIN_ALLOWED_ORIGINS:}

@@ -1,6 +1,9 @@
 # LLM Gateway
 
-> 云服务器、GitLab CI、Docker Compose、K3s 与中间件持久化的完整中文教程：
+> **推荐（双机重装 · 仅 Docker Compose，无 K3s）手把手教程：**
+> [`docs/dual-server-gitlab-docker-compose-guide.md`](docs/dual-server-gitlab-docker-compose-guide.md)
+>
+> 历史单机 + K3s 教程（归档参考）：
 > [`docs/gitlab-docker-k3s-deployment-guide.md`](docs/gitlab-docker-k3s-deployment-guide.md)
 
 一个**生产级 LLM API 网关**:对外提供 OpenAI 兼容协议(含 SSE 流式),对内统一管理多供应商路由、鉴权、限流配额、内容护栏、缓存与 Token 级计费,并配套 Vue 3 管理控制台。单机可用 Docker Compose 一条命令拉起全套。
@@ -81,6 +84,6 @@ Roadmap 下一步:Spring Cloud Alibaba 迁移(Nacos 配置中心、Sentinel 限�
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 首启引导管理员,仅 admin_user 表为空时创建(Nacos 里填) |
 | `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 供应商密钥,留空则该供应商不可用自动 Fallback(Nacos 里填) |
 | `GATEWAY_MANAGEMENT_PORT` | Actuator 管理端口,默认 9090 |
-| `GATEWAY_ADMIN_ALLOWED_ORIGINS` | 管理端 CORS 白名单(同源反代部署留空) |
+| `GATEWAY_CORS_ALLOWED_ORIGINS` | 控制台 CORS 白名单,同时覆盖 `/admin` 与 Playground `/v1`(同源反代留空;旧变量名仍兼容) |
 
 > 注意:seed 的演示 Key `sk-demo-tenant-a/b` 仅用于本地开发,生产(prod profile)由 `V3__purge_demo_api_keys.sql` 迁移自动清除;演示定价如与实际不符请在管理台调整。

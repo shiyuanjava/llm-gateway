@@ -136,4 +136,18 @@ class OpenAiStreamReadTest {
         assertEquals(100, usage.promptTokens(), "OpenAI 口径 prompt 已含缓存，直接沿用");
         assertEquals(64, usage.cacheReadTokens(), "缓存读明细从 prompt_tokens_details 拆出");
     }
+    @Test
+    void capturesDeepSeekTopLevelCacheHitTokensFromUsageFrame() throws IOException {
+        String sse =
+                """
+                data: {"id":"ds1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"X"},"finish_reason":null}]}
+
+                data: {"id":"ds1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-flash","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":2,"total_tokens":102,"prompt_tokens_details":{"cached_tokens":0},"prompt_cache_hit_tokens":64,"prompt_cache_miss_tokens":36}}
+
+                data: [DONE]
+
+                """;
+        Usage usage = read(sse, new ArrayList<>());
+        assertEquals(64, usage.cacheReadTokens());
+    }
 }

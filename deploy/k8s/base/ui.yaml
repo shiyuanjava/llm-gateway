@@ -5,6 +5,8 @@ metadata:
   namespace: llm-gateway
 spec:
   type: NodePort
+  # 单节点 K3s 直连 NodePort 时保留源 IP,供 nginx X-Forwarded-For 与管理审计使用。
+  externalTrafficPolicy: Local
   selector:
     app: ui
   ports:
@@ -48,4 +50,3 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
-

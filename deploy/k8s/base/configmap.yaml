@@ -16,8 +16,7 @@ data:
   NACOS_DISCOVERY_ENABLED: "true"
   SENTINEL_DASHBOARD: sentinel-dashboard:8858
   GATEWAY_RATE_LIMIT_STORE: sentinel
-  # 刻意不设 GATEWAY_ADMIN_ALLOWED_ORIGINS:空字符串环境变量会遮蔽 Nacos 配置;
+  # 刻意不设 GATEWAY_CORS_ALLOWED_ORIGINS:空字符串环境变量会遮蔽 Nacos 配置;
   # 需要跨域白名单时在 Nacos 的 llm-gateway.yaml 里发布同名键
   JAVA_TOOL_OPTIONS: "-DJM.LOG.PATH=/app/logs/nacos -Dnacos.logging.default.config.enabled=false -Dcsp.sentinel.log.dir=/app/logs/sentinel"
   TZ: Asia/Shanghai
-

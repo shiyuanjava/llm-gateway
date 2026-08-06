@@ -110,7 +110,12 @@ build_images:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build --pull -t "$GATEWAY_IMAGE" llm-gateway
-    - docker build --pull -t "$UI_IMAGE" llm-gateway-ui
+    - >-
+      docker build --pull
+      --build-arg VITE_API_BASE="${VITE_API_BASE:-}"
+      --build-arg VITE_API_TIMEOUT_MS="${VITE_API_TIMEOUT_MS:-30000}"
+      --build-arg VITE_STREAM_TIMEOUT_MS="${VITE_STREAM_TIMEOUT_MS:-310000}"
+      -t "$UI_IMAGE" llm-gateway-ui
     - docker push "$GATEWAY_IMAGE"
     - docker push "$UI_IMAGE"
   rules:

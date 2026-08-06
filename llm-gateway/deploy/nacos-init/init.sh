@@ -45,8 +45,9 @@ OPENAI_API_KEY: \"\"
 ANTHROPIC_API_KEY: \"\"
 # 可选:JWT 密钥轮换过渡期的旧密钥(逗号分隔);过渡期后清空
 # GATEWAY_JWT_SECRETS_FALLBACK: \"\"
-# 可选:管理端跨域白名单(逗号分隔);同源反代部署保持缺省即可
-# GATEWAY_ADMIN_ALLOWED_ORIGINS: \"\"
+# 可选:控制台跨域白名单(逗号分隔),同时覆盖 /admin 与 Playground /v1;
+# 同源反代部署保持缺省即可。旧 GATEWAY_ADMIN_ALLOWED_ORIGINS 仍兼容。
+# GATEWAY_CORS_ALLOWED_ORIGINS: \"\"
 "
   echo ""
   echo "已发布 llm-gateway.yaml 模板,请在控制台填写密钥"

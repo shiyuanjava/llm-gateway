@@ -8,6 +8,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -19,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(
         properties = {
             "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-            "gateway.admin.allowed-origins=http://localhost:5173"
+            "gateway.cors.allowed-origins=http://localhost:5173"
         })
 @AutoConfigureMockMvc
 class CorsFilterTest {
@@ -42,6 +43,27 @@ class CorsFilterTest {
                         .header("Access-Control-Request-Method", "GET"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
+    }
+
+    @Test
+    void playgroundPreflightAndUnauthorizedResponseCarryTraceCorsHeaders() throws Exception {
+        mockMvc.perform(options("/v1/chat/completions")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "authorization,content-type,x-request-id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Expose-Headers", "X-Request-Id"));
+
+        mockMvc.perform(post("/v1/chat/completions")
+                        .header("Origin", "http://localhost:5173")
+                        .header("X-Request-Id", "ui_test_request")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Expose-Headers", "X-Request-Id"))
+                .andExpect(header().string("X-Request-Id", "ui_test_request"));
     }
 
     @Test

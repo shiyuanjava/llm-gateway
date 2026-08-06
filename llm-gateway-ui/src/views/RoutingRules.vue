@@ -1,11 +1,26 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Refresh, Edit, Delete, Right } from '@element-plus/icons-vue'
+import {
+  Plus,
+  RefreshCw,
+  SquarePen,
+  Trash2,
+  ArrowRight,
+  Route,
+  Network,
+  GitBranch,
+  CornerDownRight,
+} from 'lucide-vue-next'
 import { routingApi, metaApi } from '../api'
 import { useCrudDialog } from '../composables/useCrudDialog'
+import PageIntro from '../components/PageIntro.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const providers = ref([])
+const fallbackCount = computed(
+  () => rows.value.reduce((sum, row) => sum + (Array.isArray(row.fallbacks) ? row.fallbacks.length : 0), 0)
+)
 
 const blankForm = () => ({
   id: null,
@@ -67,25 +82,59 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">路由规则</h2>
-        <div class="page-subtitle">别名 → 首选 + 升级阈值 + 降级链,改动即时生效</div>
+    <PageIntro
+      index="02"
+      eyebrow="Decision graph / model traffic"
+      title="路由规则"
+      subtitle="为每个别名编排首选目标、升级阈值与降级链。规则按顺序在网关边缘执行。"
+    >
+      <template #actions>
+        <el-button type="primary" @click="openCreate">
+          <el-icon><Plus :stroke-width="1.8" /></el-icon>&nbsp;新增规则
+        </el-button>
+      </template>
+    </PageIntro>
+
+    <div class="metric-strip rise" style="--i: 1">
+      <div class="metric-cell" style="--metric-color: var(--accent-violet)">
+        <div class="metric-label"><Route :size="14" :stroke-width="1.7" /> ALIASES</div>
+        <div class="metric-value tabular-nums">{{ rows.length }}</div>
+        <div class="metric-note">已编排别名</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-cyan)">
+        <div class="metric-label"><Network :size="14" :stroke-width="1.7" /> PROVIDERS</div>
+        <div class="metric-value tabular-nums">{{ providers.length }}</div>
+        <div class="metric-note">可用供应商</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-lime)">
+        <div class="metric-label"><GitBranch :size="14" :stroke-width="1.7" /> FALLBACKS</div>
+        <div class="metric-value tabular-nums">{{ fallbackCount }}</div>
+        <div class="metric-note">降级节点</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-pink)">
+        <div class="metric-label"><CornerDownRight :size="14" :stroke-width="1.7" /> MODE</div>
+        <div class="metric-value">CHAINED</div>
+        <div class="metric-note">顺序决策</div>
       </div>
     </div>
 
-    <div class="surface" style="padding: 16px">
-      <div class="toolbar">
-        <el-button type="primary" @click="openCreate"
-          ><el-icon><Plus /></el-icon>&nbsp;新增规则</el-button
-        >
-        <div class="spacer"></div>
+    <div class="surface data-panel rise" style="--i: 2">
+      <div class="panel-heading">
+        <div class="panel-heading-icon"><Route :size="17" :stroke-width="1.7" /></div>
+        <div class="panel-heading-copy">
+          <div class="panel-heading-title">决策链路</div>
+          <div class="panel-heading-note">ALIAS / PRIMARY / ESCALATION / FALLBACK</div>
+        </div>
+        <div class="panel-heading-rule"></div>
         <el-button :loading="loading" @click="load"
-          ><el-icon><Refresh /></el-icon>&nbsp;刷新</el-button
+          ><el-icon><RefreshCw :stroke-width="1.8" /></el-icon>&nbsp;刷新</el-button
         >
       </div>
 
-      <el-table :data="rows" v-loading="loading" style="width: 100%" empty-text="暂无路由规则">
+      <el-table :data="rows" v-loading="loading" style="width: 100%">
+        <template #empty>
+          <EmptyState :icon="Route" title="暂无路由规则" hint="新增一个别名,开始编排模型流量" />
+        </template>
         <el-table-column prop="alias" label="别名" width="120">
           <template #default="{ row }"
             ><el-tag effect="dark" round>{{ row.alias }}</el-tag></template
@@ -101,7 +150,7 @@ onMounted(async () => {
             <span v-if="!row.fallbacks || !row.fallbacks.length" class="muted">—</span>
             <span v-else class="chain">
               <template v-for="(f, i) in row.fallbacks" :key="i">
-                <el-icon v-if="i" class="chain-arrow"><Right /></el-icon>
+                <el-icon v-if="i" class="chain-arrow"><ArrowRight :stroke-width="1.8" /></el-icon>
                 <el-tag size="small" type="info" effect="plain" class="mono"
                   >{{ f.provider }}:{{ f.model }}</el-tag
                 >
@@ -121,10 +170,10 @@ onMounted(async () => {
         <el-table-column label="操作" width="150" align="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)"
-              ><el-icon><Edit /></el-icon>编辑</el-button
+              ><el-icon><SquarePen :stroke-width="1.8" /></el-icon>编辑</el-button
             >
             <el-button link type="danger" :loading="deleting[row.id]" @click="remove(row)"
-              ><el-icon><Delete /></el-icon>删除</el-button
+              ><el-icon><Trash2 :stroke-width="1.8" /></el-icon>删除</el-button
             >
           </template>
         </el-table-column>
@@ -195,7 +244,7 @@ onMounted(async () => {
         <el-divider content-position="left">
           降级链
           <el-button link type="primary" @click="addFallback"
-            ><el-icon><Plus /></el-icon>添加</el-button
+            ><el-icon><Plus :stroke-width="1.8" /></el-icon>添加</el-button
           >
         </el-divider>
         <div v-if="!form.fallbacks.length" class="muted" style="padding: 4px 0 8px">
@@ -214,7 +263,7 @@ onMounted(async () => {
           </el-select>
           <el-input v-model="f.model" placeholder="物理模型" style="flex: 1" />
           <el-button link type="danger" @click="removeFallback(i)"
-            ><el-icon><Delete /></el-icon
+            ><el-icon><Trash2 :stroke-width="1.8" /></el-icon
           ></el-button>
         </div>
       </el-form>

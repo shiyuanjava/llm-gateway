@@ -1,7 +1,17 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { Search, RefreshLeft } from '@element-plus/icons-vue'
+import { computed, ref, reactive, onMounted } from 'vue'
+import {
+  Search,
+  RotateCcw,
+  ShieldCheck,
+  CircleCheck,
+  TriangleAlert,
+  UsersRound,
+  CircleX,
+} from 'lucide-vue-next'
 import { auditApi } from '../api'
+import PageIntro from '../components/PageIntro.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const loading = ref(false)
 const rows = ref([])
@@ -12,6 +22,9 @@ const loadError = ref(false)
 let loadSeq = 0
 const query = reactive({ username: '', action: '', page: 1, size: 20 })
 const timeRange = ref([])
+const successCount = computed(() => rows.value.filter((row) => String(row.action || '').endsWith('_OK')).length)
+const failureCount = computed(() => rows.value.filter((row) => String(row.action || '').includes('FAIL') || String(row.action || '').includes('LOCKED')).length)
+const userCount = computed(() => new Set(rows.value.map((row) => row.username).filter(Boolean)).size)
 
 const actionMeta = {
   LOGIN_OK: { type: 'success', label: '登录成功' },
@@ -73,14 +86,47 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">操作审计</h2>
+    <PageIntro
+      index="05"
+      eyebrow="Trust layer / admin activity"
+      title="操作审计"
+      subtitle="管理面登录与写操作的完整轨迹，帮助你确认谁在什么时间改变了什么。"
+    />
+
+    <div class="metric-strip rise" style="--i: 1">
+      <div class="metric-cell" style="--metric-color: var(--accent-cyan)">
+        <div class="metric-label"><ShieldCheck :size="14" :stroke-width="1.7" /> EVENTS</div>
+        <div class="metric-value tabular-nums">{{ total.toLocaleString('en-US') }}</div>
+        <div class="metric-note">审计事件总数</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-lime)">
+        <div class="metric-label"><CircleCheck :size="14" :stroke-width="1.7" /> ACCEPTED</div>
+        <div class="metric-value tabular-nums">{{ successCount }}</div>
+        <div class="metric-note">当前页成功事件</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-pink)">
+        <div class="metric-label"><TriangleAlert :size="14" :stroke-width="1.7" /> ATTENTION</div>
+        <div class="metric-value tabular-nums">{{ failureCount }}</div>
+        <div class="metric-note">需要关注事件</div>
+      </div>
+      <div class="metric-cell" style="--metric-color: var(--accent-violet)">
+        <div class="metric-label"><UsersRound :size="14" :stroke-width="1.7" /> ACTORS</div>
+        <div class="metric-value tabular-nums">{{ userCount }}</div>
+        <div class="metric-note">当前页操作用户</div>
       </div>
     </div>
 
-    <div class="surface" style="padding: 16px">
-      <div class="toolbar">
+    <div class="surface data-panel rise" style="--i: 2">
+      <div class="panel-heading">
+        <div class="panel-heading-icon"><ShieldCheck :size="17" :stroke-width="1.7" /></div>
+        <div class="panel-heading-copy">
+          <div class="panel-heading-title">操作事件流</div>
+          <div class="panel-heading-note">LOGIN / WRITE / CONFIG RELOAD</div>
+        </div>
+        <div class="panel-heading-rule"></div>
+        <span class="live-counter mono">PAGE {{ query.page.toString().padStart(2, '0') }}</span>
+      </div>
+      <div class="filter-deck">
         <el-input
           v-model="query.username"
           placeholder="用户名"
@@ -101,19 +147,23 @@ onMounted(load)
           style="width: 340px"
         />
         <el-button type="primary" :loading="loading" @click="search"
-          ><el-icon><Search /></el-icon>&nbsp;查询</el-button
+          ><el-icon><Search :stroke-width="1.8" /></el-icon>&nbsp;查询</el-button
         >
+        <div class="filter-spacer"></div>
         <el-button @click="reset"
-          ><el-icon><RefreshLeft /></el-icon>&nbsp;重置</el-button
+          ><el-icon><RotateCcw :stroke-width="1.8" /></el-icon>&nbsp;重置</el-button
         >
       </div>
 
       <el-table :data="rows" v-loading="loading" style="width: 100%">
         <template #empty>
-          <el-empty v-if="loadError" description="加载失败" :image-size="60">
-            <el-button type="primary" size="small" @click="load">重试</el-button>
-          </el-empty>
-          <span v-else>暂无审计记录</span>
+          <EmptyState
+            :icon="loadError ? CircleX : ShieldCheck"
+            :title="loadError ? '读取审计失败' : '暂无审计记录'"
+            :hint="loadError ? '检查网关连接后重新拉取' : '管理面动作出现后会在这里留下不可变轨迹'"
+          >
+            <el-button v-if="loadError" type="primary" size="small" @click="load">重试</el-button>
+          </EmptyState>
         </template>
         <el-table-column label="时间" width="170">
           <template #default="{ row }"
@@ -154,11 +204,18 @@ onMounted(load)
           @size-change="onSize"
         />
       </div>
+      <div class="data-footnote mono">AUDIT TRAIL / {{ rows.length }} EVENTS IN CURRENT PAGE</div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.live-counter {
+  color: var(--accent-lime);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;

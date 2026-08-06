@@ -115,14 +115,19 @@ public class CostCalculator implements ConfigReloadable {
         if (price == null) {
             return 0.0;
         }
-        int cacheRead = usage.cacheReadTokens();
-        int cacheCreation = usage.cacheCreationTokens();
-        int nonCacheInput = Math.max(0, usage.promptTokens() - cacheRead - cacheCreation);
+        // Usage is supplied by an upstream provider.  Keep malformed negative
+        // or over-sized cache details from turning into a negative charge or
+        // charging the same prompt tokens twice.
+        int promptTokens = Math.max(0, usage.promptTokens());
+        int completionTokens = Math.max(0, usage.completionTokens());
+        int cacheRead = Math.min(Math.max(0, usage.cacheReadTokens()), promptTokens);
+        int cacheCreation = Math.min(Math.max(0, usage.cacheCreationTokens()), promptTokens - cacheRead);
+        int nonCacheInput = promptTokens - cacheRead - cacheCreation;
         double cacheReadPer1k = price.cacheReadPer1k() == null ? price.inputPer1k() : price.cacheReadPer1k();
         double cacheWritePer1k = price.cacheWritePer1k() == null ? price.inputPer1k() : price.cacheWritePer1k();
         return nonCacheInput / 1000.0 * price.inputPer1k()
                 + cacheRead / 1000.0 * cacheReadPer1k
                 + cacheCreation / 1000.0 * cacheWritePer1k
-                + usage.completionTokens() / 1000.0 * price.outputPer1k();
+                + completionTokens / 1000.0 * price.outputPer1k();
     }
 }

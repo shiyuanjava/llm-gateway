@@ -127,6 +127,11 @@ services:
     image: ${UI_IMAGE:-llm-gateway-ui:local}
     build:
       context: ../llm-gateway-ui
+      args:
+        # 非敏感前端编译配置;同源部署保持 API_BASE 为空。
+        VITE_API_BASE: ${VITE_API_BASE:-}
+        VITE_API_TIMEOUT_MS: ${VITE_API_TIMEOUT_MS:-30000}
+        VITE_STREAM_TIMEOUT_MS: ${VITE_STREAM_TIMEOUT_MS:-310000}
     depends_on:
       gateway:
         condition: service_healthy

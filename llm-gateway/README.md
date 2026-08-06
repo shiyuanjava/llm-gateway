@@ -177,7 +177,7 @@ docker compose up -d --build
 docker compose restart gateway
 ```
 
-密钥分级:应用密钥在 Nacos(一处存储、控制台可改、随 `nacos-data` 卷持久化,重复部署不覆盖);`.env` 只放容器启动就要用的基础设施密码。同名环境变量若显式设置则优先(CI 测试/本地裸跑用)。
+密钥分级:应用密钥在 Nacos(一处存储、控制台可改、随 `nacos-data` 卷持久化,重复部署不覆盖);`.env` 只放基础设施密码与非敏感前端构建参数。同名环境变量若显式设置则优先(CI 测试/本地裸跑用)。
 
 拓扑与端口:
 
@@ -192,6 +192,8 @@ docker compose restart gateway
 - API 调用:`http://<host>:${UI_PORT}/v1/chat/completions`(Bearer API Key,经 nginx 反代,SSE 不缓冲)。Key 在管理台新建(`sk-gw-` 开头);seed 的演示 Key `sk-demo-tenant-a/b` 仅存在于开发环境,prod profile 首次迁移即被 `V3__purge_demo_api_keys.sql` 清除。
 - 日志:`docker compose logs -f gateway`(控制台);容器内 `/app/logs/gateway.log`(prod profile,按天 + 100MB 滚动,保留 14 天,总量 2GB;已外挂 named volume `gateway-logs`,容器重建不丢)。每行日志含 traceId,与响应头 `X-Request-Id`、`request_log.request_id` 同 ID,可互查。
 - 优雅停机:`docker compose stop`(SIGTERM)后不再接新请求,进行中的请求(含 SSE 流)最多 30s 收尾。
+
+前端链路参数可通过 compose `.env` 的 `VITE_API_BASE`、`VITE_API_TIMEOUT_MS`、`VITE_STREAM_TIMEOUT_MS` 在构建时注入;默认同源无需配置。若管理台与网关分域,后端在 Nacos 中设置 `GATEWAY_CORS_ALLOWED_ORIGINS`,它会同时放行 `/admin/**` 与 Playground 使用的 `/v1/**`,并向浏览器暴露 `X-Request-Id`。prod profile 会解析 nginx 传入的 `X-Forwarded-*`,使管理审计记录真实客户端 IP。
 
 ---
 
