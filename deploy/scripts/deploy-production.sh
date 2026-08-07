@@ -6,6 +6,7 @@ SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLATFORM_DIR=/opt/ztmdcg/platform
 APP_DIR=/opt/ztmdcg/apps/llm-gateway
 NGINX_DIR=/opt/ztmdcg/nginx
+OPS_DIR=/opt/ztmdcg/scripts
 SECRETS_DIR=/opt/ztmdcg/secrets
 STATE_FILE="$APP_DIR/release.env"
 LOCK_FILE=/var/lock/ztmdcg-deploy.lock
@@ -22,12 +23,14 @@ done
 exec 9>"$LOCK_FILE"
 flock -w 600 9
 
-install -d -m 750 "$PLATFORM_DIR/mysql/init" "$PLATFORM_DIR/nacos-init" "$APP_DIR" "$NGINX_DIR/conf.d" "$NGINX_DIR/snippets"
+install -d -m 750 "$PLATFORM_DIR/mysql/init" "$PLATFORM_DIR/nacos-init" "$APP_DIR" "$NGINX_DIR/conf.d" "$NGINX_DIR/snippets" "$OPS_DIR"
 install -m 640 "$SOURCE_ROOT/deploy/platform/docker-compose.yml" "$PLATFORM_DIR/docker-compose.yml"
 install -m 750 "$SOURCE_ROOT/deploy/platform/mysql/init/10-create-app-databases.sh" "$PLATFORM_DIR/mysql/init/10-create-app-databases.sh"
 install -m 750 "$SOURCE_ROOT/deploy/platform/nacos-init/init.sh" "$PLATFORM_DIR/nacos-init/init.sh"
 install -m 640 "$SOURCE_ROOT/deploy/production/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 install -m 640 "$SOURCE_ROOT/deploy/nginx/proxy-common.conf" "$NGINX_DIR/snippets/proxy-common.conf"
+install -m 750 "$SOURCE_ROOT/deploy/scripts/backup-runtime.sh" "$OPS_DIR/backup-runtime.sh"
+install -m 750 "$SOURCE_ROOT/deploy/scripts/restore-mysql.sh" "$OPS_DIR/restore-mysql.sh"
 
 docker network inspect ztmdcg-net >/dev/null 2>&1 || docker network create ztmdcg-net
 docker compose --env-file "$SECRETS_DIR/platform.env" -f "$PLATFORM_DIR/docker-compose.yml" up -d --wait
