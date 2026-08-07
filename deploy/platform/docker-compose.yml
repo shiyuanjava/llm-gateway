@@ -1,0 +1,143 @@
+name: ztmdcg-platform
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      SOFT_MYSQL_DATABASE: ${SOFT_MYSQL_DATABASE:-soft_training}
+      SOFT_MYSQL_USER: ${SOFT_MYSQL_USER:-soft_training_app}
+      SOFT_MYSQL_PASSWORD: ${SOFT_MYSQL_PASSWORD:?set SOFT_MYSQL_PASSWORD}
+      GATEWAY_MYSQL_DATABASE: ${GATEWAY_MYSQL_DATABASE:-llm_gateway}
+      GATEWAY_MYSQL_USER: ${GATEWAY_MYSQL_USER:-llm_gateway_app}
+      GATEWAY_MYSQL_PASSWORD: ${GATEWAY_MYSQL_PASSWORD:?set GATEWAY_MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=80
+    volumes:
+      - /data/ztmdcg/mysql:/var/lib/mysql
+      - ./mysql/init/10-create-app-databases.sh:/docker-entrypoint-initdb.d/10-create-app-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    mem_limit: 1280m
+    networks:
+      ztmdcg-net:
+        aliases: [ztmdcg-mysql]
+
+  redis-soft:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      SOFT_REDIS_PASSWORD: ${SOFT_REDIS_PASSWORD:?set SOFT_REDIS_PASSWORD}
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --maxmemory 192mb --maxmemory-policy allkeys-lru --requirepass \"$$SOFT_REDIS_PASSWORD\""]
+    volumes: [/data/ztmdcg/redis-soft:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$SOFT_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+    networks:
+      ztmdcg-net:
+        aliases: [ztmdcg-redis-soft]
+
+  redis-gateway:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      GATEWAY_REDIS_PASSWORD: ${GATEWAY_REDIS_PASSWORD:?set GATEWAY_REDIS_PASSWORD}
+    command: ["sh", "-ec", "exec redis-server --save \"\" --appendonly no --maxmemory 192mb --maxmemory-policy allkeys-lru --requirepass \"$$GATEWAY_REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$GATEWAY_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+    networks:
+      ztmdcg-net:
+        aliases: [ztmdcg-redis-gateway]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    command: server /data --console-address :9001
+    ports: ["127.0.0.1:9001:9001"]
+    volumes: [/data/ztmdcg/minio:/data]
+    mem_limit: 384m
+    networks:
+      ztmdcg-net:
+        aliases: [ztmdcg-minio]
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    restart: unless-stopped
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: [/data/ztmdcg/qdrant:/qdrant/storage]
+    mem_limit: 512m
+    networks:
+      ztmdcg-net:
+        aliases: [ztmdcg-qdrant]
+
+  nacos:
+    image: nacos/nacos-server:v3.1.1
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLED: "false"
+      NACOS_AUTH_TOKEN: SecretKey012345678901234567890123456789012345678901234567890123456789
+      NACOS_AUTH_IDENTITY_KEY: nacos-local
+      NACOS_AUTH_IDENTITY_VALUE: nacos-local
+      JVM_XMS: 256m
+      JVM_XMX: 384m
+      JVM_XMN: 128m
+      TZ: Asia/Shanghai
+    ports:
+      - 127.0.0.1:8848:8848
+      - 127.0.0.1:8850:8080
+    volumes: [/data/ztmdcg/nacos:/home/nacos/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v3/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    mem_limit: 512m
+    networks:
+      ztmdcg-net:
+        aliases: [nacos]
+
+  nacos-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      nacos:
+        condition: service_healthy
+    volumes: [./nacos-init/init.sh:/init.sh:ro]
+    entrypoint: ["sh", "/init.sh"]
+    restart: "no"
+    networks: [ztmdcg-net]
+
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.8
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: -Xms128m -Xmx192m
+    ports: ["127.0.0.1:8858:8858"]
+    mem_limit: 256m
+    networks:
+      ztmdcg-net:
+        aliases: [sentinel-dashboard]
+
+networks:
+  ztmdcg-net:
+    external: true
