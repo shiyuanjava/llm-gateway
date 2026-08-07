@@ -86,104 +86,41 @@ frontend_format:
     - npm run format:check
   allow_failure: true
 
-# 需要 GitLab Container Registry(启用方法见部署文档)。镜像在 CI 里构建并推到 Registry,
-# 服务器只拉镜像 —— 不在服务器上编译、不把源码留在服务器上。
+# 镜像在京东云构建 Runner 中生成并推到 HTTPS Registry；腾讯云只拉取不可变 SHA 镜像。
 build_images:
   stage: image
   image: docker:27-cli
   variables:
-    # Docker-in-Docker 仅存在于本 Job 的隔离网络;关闭该内部链路 TLS,避免 Runner 还需挂载证书目录。
-    # 必须限定在本 Job:若放全局,DOCKER_HOST 会注入所有 Job,把 shell 部署 Runner 的 docker 也指去 tcp://docker:2375
     DOCKER_HOST: "tcp://docker:2375"
     DOCKER_TLS_CERTDIR: ""
   services:
     - name: docker:27-dind
       alias: docker
-      # dind 是独立的 Docker 守护进程,不读宿主机 daemon.json:
-      # --insecure-registry 放行自建 HTTP Registry(上 HTTPS 后可删);
-      # --registry-mirror 国内直连 Docker Hub 不通,构建拉基础镜像走加速(失效就换当期可用的)
       command:
-        - "--insecure-registry=10.1.0.16:5050"
-        - "--registry-mirror=https://mirror.ccs.tencentyun.com"
-        - "--registry-mirror=https://docker.m.daocloud.io"
+        - --registry-mirror=https://docker.m.daocloud.io
+        - --registry-mirror=https://docker.1ms.run
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build --pull -t "$GATEWAY_IMAGE" llm-gateway
-    - >-
-      docker build --pull
-      --build-arg VITE_API_BASE="${VITE_API_BASE:-}"
-      --build-arg VITE_API_TIMEOUT_MS="${VITE_API_TIMEOUT_MS:-30000}"
-      --build-arg VITE_STREAM_TIMEOUT_MS="${VITE_STREAM_TIMEOUT_MS:-310000}"
-      -t "$UI_IMAGE" llm-gateway-ui
+    - docker build --pull --build-arg VITE_API_BASE= -t "$UI_IMAGE" llm-gateway-ui
     - docker push "$GATEWAY_IMAGE"
     - docker push "$UI_IMAGE"
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_REGISTRY'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
-# Compose 路线:shell executor Runner(标签 llm-deploy)在服务器本机执行。
-# 服务器上不构建、不保留完整项目副本:只把 compose 文件与 nacos-init 脚本同步到 /opt/llm-gateway,
-# 再从 Registry 拉取本次提交的镜像启动。
-# 密钥分两级,均不进仓库与 CI 变量:
-#   - 基础设施密码(MYSQL_ROOT_PASSWORD/REDIS_PASSWORD)在服务器 /opt/llm-gateway/.env,手工创建一次;
-#   - 应用密钥(JWT/管理员/供应商 Key)在 Nacos 的 llm-gateway.yaml,控制台填写一次。
-deploy_compose:
+deploy_production:
   stage: deploy
-  tags:
-    - llm-deploy
-  needs:
-    - job: build_images
+  tags: [ztmdcg-production]
+  needs: [build_images]
   variables:
     GIT_DEPTH: "1"
-    DEPLOY_DIR: /opt/llm-gateway
-    # 显式钉死本机 daemon(insecure-registries 等配置在它身上),防止任何环境注入把 docker 指去别处
     DOCKER_HOST: "unix:///var/run/docker.sock"
   script:
-    - test -f "$DEPLOY_DIR/.env" || { echo "缺少 $DEPLOY_DIR/.env(MYSQL_ROOT_PASSWORD/REDIS_PASSWORD/UI_PORT),按部署文档初始化一次"; exit 1; }
-    - install -D -m 644 llm-gateway/docker-compose.yml "$DEPLOY_DIR/docker-compose.yml"
-    - install -D -m 644 llm-gateway/deploy/nacos-init/init.sh "$DEPLOY_DIR/deploy/nacos-init/init.sh"
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    - docker compose --env-file "$DEPLOY_DIR/.env" -f "$DEPLOY_DIR/docker-compose.yml" pull gateway ui
-    - |
-      docker compose --env-file "$DEPLOY_DIR/.env" -f "$DEPLOY_DIR/docker-compose.yml" up -d --wait || {
-        docker compose --env-file "$DEPLOY_DIR/.env" -f "$DEPLOY_DIR/docker-compose.yml" ps
-        echo "若是首次部署:gateway 会因 Nacos 里还没填 GATEWAY_JWT_SECRET 而反复重启。"
-        echo "SSH 隧道打开 Nacos 控制台填好密钥后,重跑本 Job 即可。"
-        exit 1
-      }
-    # 小盘服务器:清掉不再被任何容器使用的镜像(含旧版本 gateway/ui);回滚时重跑旧流水线会从 Registry 重新拉取
-    - docker image prune -af
+    - bash deploy/scripts/deploy-production.sh
   environment:
-    name: compose-production
-    url: "http://$DEPLOY_HOST:8081"
-  resource_group: compose-production
+    name: production
+    url: https://gateway.ztmdcg.cn
+  resource_group: llm-gateway-production
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_REGISTRY'
-      when: manual
-
-# K3s 路线:KUBE_CONFIG 是 GitLab 的 File 类型变量(唯一需要配置的 CI 凭据)。
-# llm-gateway-secrets 与 gitlab-registry 两个 Secret 按部署文档在集群里手工创建一次,CI 不再管理密钥。
-deploy_k3s:
-  stage: deploy
-  image: alpine:3.21
-  needs:
-    - job: build_images
-  before_script:
-    - apk add --no-cache kubectl
-    - export KUBECONFIG="$KUBE_CONFIG"
-  script:
-    # 前置检查:KUBE_CONFIG 未配置(K3s 阶段还没启用)时立刻失败并说明,避免 kubectl 去敲 localhost:8080 的迷惑报错
-    - test -s "$KUBE_CONFIG" || { echo "未配置 KUBE_CONFIG(File 类型 CI 变量,见部署文档 11.3 节)。K3s 路线尚未启用,Compose 部署请点 deploy_compose。"; exit 1; }
-    - kubectl apply -k deploy/k8s/base
-    - kubectl -n llm-gateway set image deployment/gateway gateway="$GATEWAY_IMAGE"
-    - kubectl -n llm-gateway set image deployment/ui ui="$UI_IMAGE"
-    - kubectl -n llm-gateway rollout status deployment/gateway --timeout=300s
-    - kubectl -n llm-gateway rollout status deployment/ui --timeout=180s
-  environment:
-    name: k3s-production
-    url: "http://$DEPLOY_HOST:30081"
-  resource_group: k3s-production
-  rules:
-    # 多一个 $KUBE_CONFIG 条件:没配置该变量(K3s 阶段未启用)时,本 Job 干脆不出现在流水线里
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_REGISTRY && $KUBE_CONFIG'
-      when: manual
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
