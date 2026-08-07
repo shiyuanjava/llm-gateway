@@ -195,7 +195,7 @@ onBeforeUnmount(stop)
 <template>
   <div class="page playground-page">
     <PageIntro
-      index="06"
+      index="07"
       eyebrow="Edge lab / streaming verification"
       title="试运行"
       subtitle="用租户 API Key 直连 /v1，验证路由、护栏与流式输出。密钥只保存在当前页面内存。"

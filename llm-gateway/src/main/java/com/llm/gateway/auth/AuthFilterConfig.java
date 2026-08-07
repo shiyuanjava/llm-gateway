@@ -9,19 +9,38 @@ import com.llm.gateway.audit.AdminAuditFilter;
 import com.llm.gateway.audit.AdminAuditService;
 import com.llm.gateway.auth.admin.AdminAuthService;
 import com.llm.gateway.auth.admin.AdminJwtFilter;
+import com.llm.gateway.ipcontrol.IpBlockFilter;
+import com.llm.gateway.ipcontrol.IpBlockService;
 
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * 鉴权过滤器注册配置：{@code /v1/*} 走 API Key 认证，{@code /admin/*} 走管理端 JWT 认证 + 写操作审计。
  *
- * <p>全局 Filter 顺序:TraceIdFilter(HIGHEST)→ CorsFilter(+10)→ ApiKey(+20)→ AdminJwt(+30)→ 审计(+40)。
+ * <p>全局 Filter 顺序:TraceIdFilter(HIGHEST)→ CorsFilter(+10)→ IP 防护(+15)→ ApiKey(+20)→ AdminJwt(+30)→ 审计(+40)。
  *
  * <p>用 {@link FilterRegistrationBean} 显式注册而非把过滤器声明为 Bean，是为了精确控制
  * 作用路径，避免 Actuator 健康检查等端点也被强制鉴权。
  */
 @Configuration
 public class AuthFilterConfig {
+
+    /**
+     * 注册 IP 访问控制过滤器。它位于 API Key 鉴权之前，使无效 Key 与扫描请求也会计入频率窗口。
+     *
+     * @param blockService IP 封禁服务
+     * @param objectMapper JSON 序列化器
+     * @return 过滤器注册 Bean
+     */
+    @Bean
+    public FilterRegistrationBean<IpBlockFilter> ipBlockFilter(IpBlockService blockService, ObjectMapper objectMapper) {
+        FilterRegistrationBean<IpBlockFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new IpBlockFilter(blockService, objectMapper));
+        registration.addUrlPatterns("/v1/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 15);
+        registration.setName("ipBlockFilter");
+        return registration;
+    }
 
     /**
      * 注册 API Key 鉴权过滤器。

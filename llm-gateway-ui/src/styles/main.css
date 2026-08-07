@@ -398,6 +398,30 @@ body::after {
   backdrop-filter: blur(7px);
 }
 
+/* 窄屏时不要让带固定 width 的 Dialog / MessageBox 把操作按钮推出视口。
+   Element Plus 会把弹层 teleport 到 body，宽度不会自动随容器收缩；
+   这里只在移动端限制最大宽度，桌面端仍沿用各页面声明的宽度。 */
+@media (max-width: 700px) {
+  .el-overlay-dialog {
+    padding: 12px;
+  }
+
+  .el-dialog {
+    max-width: calc(100vw - 24px);
+    margin: 8vh auto 24px;
+  }
+
+  .el-dialog__body {
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+  }
+
+  .el-message-box {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+}
+
 /* ============================================================
    内容层原语 — 六个业务页共用同一套排版 / 状态 / 空态语言。
    目的:让"壳"(侧栏+顶栏)的先锋气质延续到每一张数据页,

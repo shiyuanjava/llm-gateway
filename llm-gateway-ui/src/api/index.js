@@ -46,3 +46,12 @@ export const logApi = {
 export const auditApi = {
   list: (params) => http.get('/admin/audit-logs', { params }),
 }
+
+/** IP 访问控制：自动封禁规则与手动封禁记录。 */
+export const ipControlApi = {
+  getRule: () => http.get('/admin/ip-control/rule'),
+  updateRule: (data) => http.put('/admin/ip-control/rule', data),
+  listBlocks: (params) => http.get('/admin/ip-control/blocks', { params }),
+  block: (data) => http.post('/admin/ip-control/blocks', data),
+  unblock: (id) => http.delete(`/admin/ip-control/blocks/${id}`),
+}

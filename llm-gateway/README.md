@@ -40,6 +40,7 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 | `routing_fallback` | 配置 | 路由降级链 |
 | `model_pricing` | 配置 | 模型每 1K Token 计费单价 |
 | `request_log` | 记录 | 每次请求的审计、用量、成本(也是配额数据源) |
+| `ip_block_rule` / `ip_block_record` | 安全策略 | IP 频率规则、白名单，以及自动/手动封禁状态 |
 
 - 建表与种子脚本:`src/main/resources/db/migration/`(Flyway 版本化:`V1__baseline_schema.sql` 建表、`V2__seed_demo_data.sql` 演示数据、`V3__purge_demo_api_keys.sql` 演示 Key 生产门禁;启动自动迁移,已发布脚本永不修改,变更加新版本)。
 - ORM:**MyBatis-Plus**(Boot 4 须用 `mybatis-plus-spring-boot4-starter`,本项目用 `3.5.16`)。实体 `persistence/entity`、Mapper `persistence/mapper`、领域仓储 `persistence/repository`(接口 + 实现,屏蔽存储细节、便于单测注入假实现)。
@@ -58,6 +59,8 @@ Client ──(OpenAI 兼容请求 /v1/chat/completions)──▶
 | `GET/POST/PUT/DELETE /admin/pricing` | 计费单价增删改查 |
 | `GET /admin/logs`、`/admin/logs/stats` | 请求日志分页查询 + 按租户用量/成本统计 |
 | `GET /admin/meta`、`POST /admin/meta/reload` | 元信息(供应商/默认 LLM)+ 手动刷新配置 |
+| `GET/PUT /admin/ip-control/rule` | IP 自动封禁规则（窗口、阈值、封禁时长、白名单） |
+| `GET/POST/DELETE /admin/ip-control/blocks` | IP 封禁列表、手动封禁与解封 |
 
 配置类接口在写操作后会自动调用 `ConfigRefreshService.reloadAll()` 热刷新 `ApiKeyService`/
 `RuleBasedRouter`/`CostCalculator` 的缓存,**改完即时生效,无需重启**。

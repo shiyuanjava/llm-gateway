@@ -1,4 +1,4 @@
-import { ref, reactive } from 'vue'
+import { ref, reactive, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 /**
@@ -38,8 +38,10 @@ export function useCrudDialog({ api, blankForm, confirmText, buildPayload, onCre
   }
 
   function openEdit(row) {
-    // structuredClone 语义准确的深拷贝;JSON 往返会丢 Date/undefined 等非 JSON 字段
-    Object.assign(form, blankForm(), structuredClone(row))
+    // 表格中的 row 是 Vue 的响应式代理,不能直接交给 structuredClone (会抛
+    // DataCloneError,导致点击编辑时在弹窗显示前就中断)。先还原为原始对象,
+    // 再深拷贝,避免编辑表单直接修改列表数据。
+    Object.assign(form, blankForm(), structuredClone(toRaw(row)))
     dialog.mode = 'edit'
     dialog.visible = true
   }

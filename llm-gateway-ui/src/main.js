@@ -23,6 +23,7 @@ import {
   CircleDollarSign,
   ScrollText,
   ShieldCheck,
+  ShieldBan,
   SquareTerminal,
 } from 'lucide-vue-next'
 
@@ -40,6 +41,7 @@ const menuIcons = {
   CircleDollarSign,
   ScrollText,
   ShieldCheck,
+  ShieldBan,
   SquareTerminal,
 }
 for (const [name, icon] of Object.entries(menuIcons)) {

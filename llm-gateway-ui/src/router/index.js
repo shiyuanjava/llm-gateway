@@ -55,6 +55,17 @@ const routes = [
     meta: { title: '操作审计', subtitle: '管理面登录与写操作记录', icon: 'ShieldCheck', code: 'AUDIT' },
   },
   {
+    path: '/ip-control',
+    name: 'ip-control',
+    component: () => import('../views/IpControl.vue'),
+    meta: {
+      title: 'IP 防护',
+      subtitle: '请求频率规则与封禁名单',
+      icon: 'ShieldBan',
+      code: 'IP GUARD',
+    },
+  },
+  {
     path: '/playground',
     name: 'playground',
     component: () => import('../views/Playground.vue'),

@@ -14,6 +14,7 @@ LLM Gateway 的 Web 管理后台:**配置管理**(API Key / 路由规则 / 计�
 | `/pricing`   | 计费单价 | 各模型每 1K Token 单价                                     |
 | `/logs`      | 请求日志 | 分页 + 按租户/状态/模型筛选                                |
 | `/audit`     | 操作审计 | 管理面登录与写操作的不可变事件流                           |
+| `/ip-control`| IP 防护  | 自动频率封禁规则、白名单、手动封禁与解封                     |
 | `/playground`| 试运行   | API Key 直连 `/v1` 的 SSE 流式验证                         |
 
 ## 运行
@@ -46,6 +47,7 @@ cd ../llm-gateway && docker compose up -d --build
 - `GET/POST/PUT/DELETE /admin/api-keys`
 - `GET/POST/PUT/DELETE /admin/routing-rules`(含降级链)
 - `GET/POST/PUT/DELETE /admin/pricing`
+- `GET/PUT /admin/ip-control/rule`；`GET/POST/DELETE /admin/ip-control/blocks`
 - `GET /admin/logs`(分页/筛选)、`GET /admin/logs/stats`(按租户聚合)
 - `GET /admin/meta`、`POST /admin/meta/reload`
 
