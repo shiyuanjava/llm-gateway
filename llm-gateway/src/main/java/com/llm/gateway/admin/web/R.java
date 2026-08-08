@@ -30,4 +30,9 @@ public record R<T>(int code, String msg, T data) {
     public static <T> R<T> ok() {
         return new R<>(0, "ok", null);
     }
+
+    /** Failure response with a business/HTTP status code. */
+    public static <T> R<T> error(int code, String message) {
+        return new R<>(code, message, null);
+    }
 }
