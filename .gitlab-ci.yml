@@ -7,6 +7,10 @@ variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
   GATEWAY_IMAGE: "$CI_REGISTRY_IMAGE/gateway:$CI_COMMIT_SHA"
   UI_IMAGE: "$CI_REGISTRY_IMAGE/ui:$CI_COMMIT_SHA"
+  # 自建 CI 测试镜像:Maven + JDK21 + MySQL + Redis 全部预装,见 deploy/ci/Dockerfile。
+  # CI_REGISTRY_IMAGE 已含 主机:端口/组/项目,故只需追加镜像名与 tag。
+  # 改动 deploy/ci/ 后必须递增 tag,不要覆盖推送同一个 tag。
+  CI_TEST_IMAGE: "$CI_REGISTRY_IMAGE/ci-test:1"
   # 浅克隆:服务器磁盘小,所有 Job 都不需要完整历史
   GIT_DEPTH: "20"
 
@@ -17,22 +21,13 @@ cache:
 
 backend_test:
   stage: verify
-  image: maven:3.9-eclipse-temurin-21
-  services:
-    - name: mysql:8.4
-      alias: mysql
-      # 服务容器专属变量(优先级高于 Job 变量)。坑:GitLab 会把 Job 级 variables 整体注入
-      # service 容器,而官方 mysql 镜像禁止 MYSQL_USER=root——这里显式置空抵消泄漏。
-      # 该数据库只存在于当前 Job,结束后自动销毁。
-      variables:
-        MYSQL_ROOT_PASSWORD: "ci-test-mysql-password"
-        MYSQL_ROOT_HOST: "%"
-        MYSQL_DATABASE: "llm_gateway"
-        MYSQL_USER: ""
-        MYSQL_PASSWORD: ""
+  # 中间件烤在镜像里,不用 services:每次流水线不再拉 service 镜像、不再等端口探测。
+  # 关键:RedisResponseCacheIntegrationTest 硬编码连 127.0.0.1:16379,而 service
+  # 容器只能用别名主机名访问,127.0.0.1 指向 Job 容器自身——中间件必须在容器内。
+  image: "$CI_TEST_IMAGE"
   variables:
-    # 以下供被测应用读取(application.yaml 的 ${MYSQL_*} 占位符);集成测试执行 Flyway 访问真 MySQL
-    MYSQL_HOST: "mysql"
+    # 中间件在本容器内,一律走回环
+    MYSQL_HOST: "127.0.0.1"
     MYSQL_PORT: "3306"
     MYSQL_DB: "llm_gateway"
     MYSQL_USER: "root"
@@ -45,11 +40,8 @@ backend_test:
     SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
     SPRING_CLOUD_SENTINEL_ENABLED: "false"
   before_script:
-    # Maven Central 国内直连极慢:本 Job 容器内写入阿里云 mirror(与 .m2 缓存叠加,首次绿后增量下载)
-    - mkdir -p ~/.m2
-    - printf '<settings><mirrors><mirror><id>aliyun</id><mirrorOf>central</mirrorOf><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' > ~/.m2/settings.xml
-    # MySQL 初始化需要十几秒,等 3306 真正可连再开跑(初始化期的临时实例不监听 TCP,探测可靠)
-    - timeout 120 bash -c 'until (echo > /dev/tcp/mysql/3306) 2>/dev/null; do sleep 2; done'
+    # 启动内置 MySQL/Redis 并等到真正可用;任一未就绪则立即失败,不把竞态留给测试
+    - ci-services start
   script:
     - cd llm-gateway
     - mvn --batch-mode test

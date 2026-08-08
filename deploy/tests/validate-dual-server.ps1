@@ -311,6 +311,48 @@ foreach ($envPath in @(
     }
 }
 
+# Chapter 3 gets renumbered whenever a section is inserted, and its cross-references
+# use many different phrasings ("see 3.6", "per 3.3", "3.7 covers", "3.1-3.5 run on").
+# A stale pointer here is not cosmetic: it sends the operator to the wrong server and
+# they run openssl against a machine with no /etc/gitlab. Verify every 3.N reference
+# resolves to a real heading. The lookbehind drops image tags like alpine:3.21 and
+# larger section numbers like 13.1.
+$ch3Headings = @([regex]::Matches($guide, '(?m)^### (3\.\d+) ') | ForEach-Object { $_.Groups[1].Value })
+if ($ch3Headings.Count -lt 5) {
+    throw 'Could not parse chapter 3 headings from the operator guide'
+}
+$ch3Refs = @([regex]::Matches($guide, '(?<![:\w.])3\.(\d+)(?!\d)') | ForEach-Object { '3.' + $_.Groups[1].Value })
+foreach ($ref in ($ch3Refs | Sort-Object -Unique)) {
+    if ($ch3Headings -notcontains $ref) {
+        throw "Operator guide references a non-existent section: $ref"
+    }
+}
+
+# Every openssl generation step belongs on the JD Cloud host. The chapter 3 routing
+# table is what keeps the operator off the Tencent box, so it must stay present.
+if ($guide -notmatch [regex]::Escape('| 3.7 ') -or $guide -notmatch 'openssl') {
+    throw 'Operator guide is missing the chapter 3 per-section machine routing table'
+}
+
+# An unquoted <PLACEHOLDER> inside a bash block is a trap: bash reads '<' as input
+# redirection and fails with "No such file or directory" naming the placeholder, which
+# gives no hint that the operator simply forgot to substitute it. Placeholders in shell
+# blocks must be quoted ("<TOKEN>") or replaced by a read-into-variable step.
+$fenceRegex = [regex]'(?s)```(bash|sh|powershell)\r?\n(.*?)```'
+foreach ($block in $fenceRegex.Matches($guide)) {
+    $lang = $block.Groups[1].Value
+    foreach ($line in ($block.Groups[2].Value -split "`r?`n")) {
+        foreach ($ph in ([regex]'<[A-Z_][A-Z0-9_]*>').Matches($line)) {
+            $before = $line.Substring(0, $ph.Index)
+            $inDoubleQuote = (($before.ToCharArray() | Where-Object { $_ -eq '"' }).Count % 2) -eq 1
+            $inSingleQuote = (($before.ToCharArray() | Where-Object { $_ -eq "'" }).Count % 2) -eq 1
+            if (-not ($inDoubleQuote -or $inSingleQuote)) {
+                throw "Unquoted placeholder $($ph.Value) in a $lang block would be parsed as shell redirection: $($line.Trim())"
+            }
+        }
+    }
+}
+
 $softReadme = Get-Content -LiteralPath $softReadmePath -Raw
 if ($softReadme -notmatch 'dual-server-gitlab-docker-compose-guide\.md') {
     throw 'Soft-training README does not link the consolidated production guide'

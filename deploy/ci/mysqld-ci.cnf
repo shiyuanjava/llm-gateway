@@ -1,0 +1,16 @@
+# CI 测试容器的 MySQL 覆盖配置（/etc/mysql/conf.d/zz-ci.cnf）。
+# 目标：只服务本机回环、启动快、日志少。生产配置不使用本文件。
+[mysqld]
+# 只监听回环：Job 容器内的测试通过 127.0.0.1 访问，不需要对外暴露
+bind-address = 127.0.0.1
+# 容器内没有 DNS，跳过反解可避免连接握手时的长超时
+skip-name-resolve = ON
+# CI 是一次性容器，数据不需要持久化保证，关掉每次提交刷盘可显著提速
+innodb_flush_log_at_trx_commit = 2
+sync_binlog = 0
+disable_log_bin = ON
+# 4C8G 机器上还跑着 GitLab，限制缓冲池避免测试期间挤占内存
+innodb_buffer_pool_size = 256M
+max_connections = 150
+# 测试并发建表较多，放宽表缓存上限
+table_open_cache = 400
