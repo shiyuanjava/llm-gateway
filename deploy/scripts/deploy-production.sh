@@ -40,7 +40,15 @@ install -m 750 "$SOURCE_ROOT/deploy/scripts/backup-runtime.sh" "$OPS_DIR/backup-
 install -m 750 "$SOURCE_ROOT/deploy/scripts/restore-mysql.sh" "$OPS_DIR/restore-mysql.sh"
 
 docker network inspect ztmdcg-net >/dev/null 2>&1 || docker network create ztmdcg-net
-docker compose --env-file "$SECRETS_DIR/platform.env" -f "$PLATFORM_DIR/docker-compose.yml" up -d --wait
+
+platform_compose=(docker compose --env-file "$SECRETS_DIR/platform.env" -f "$PLATFORM_DIR/docker-compose.yml")
+"${platform_compose[@]}" up -d --wait
+
+# 两个一次性任务容器带 profiles,上面的 up --wait 不会碰它们(--wait 把「已退出」
+# 一律判为失败,即使退出码 0)。这里显式跑,退出码非 0 时 set -e 会终止部署。
+# 都是幂等的:建库用 CREATE ... IF NOT EXISTS,发配置只在 dataId 不存在时创建。
+"${platform_compose[@]}" run --rm mysql-init
+"${platform_compose[@]}" run --rm nacos-init
 
 set -a
 source "$SECRETS_DIR/platform.env"

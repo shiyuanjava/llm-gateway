@@ -20,7 +20,6 @@ services:
       - --max-connections=80
     volumes:
       - /data/ztmdcg/mysql:/var/lib/mysql
-      - ./mysql/init/10-create-app-databases.sh:/docker-entrypoint-initdb.d/10-create-app-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -118,8 +117,34 @@ services:
       ztmdcg-net:
         aliases: [nacos]
 
+  # 建库建账号。原先挂在 mysql 的 /docker-entrypoint-initdb.d 下,那里只在数据卷
+  # 为空的首次启动执行 —— 卷一旦存在就永久跳过,改了脚本也不会补。SQL 本身是
+  # CREATE ... IF NOT EXISTS,幂等,所以改成每次部署都跑,新卷旧卷走同一条路径。
+  mysql-init:
+    image: mysql:8.4
+    profiles: ["init"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      SOFT_MYSQL_DATABASE: ${SOFT_MYSQL_DATABASE:-soft_training}
+      SOFT_MYSQL_USER: ${SOFT_MYSQL_USER:-soft_training_app}
+      SOFT_MYSQL_PASSWORD: ${SOFT_MYSQL_PASSWORD:?set SOFT_MYSQL_PASSWORD}
+      GATEWAY_MYSQL_DATABASE: ${GATEWAY_MYSQL_DATABASE:-llm_gateway}
+      GATEWAY_MYSQL_USER: ${GATEWAY_MYSQL_USER:-llm_gateway_app}
+      GATEWAY_MYSQL_PASSWORD: ${GATEWAY_MYSQL_PASSWORD:?set GATEWAY_MYSQL_PASSWORD}
+    volumes: [./mysql/init/10-create-app-databases.sh:/init.sh:ro]
+    entrypoint: ["bash", "/init.sh"]
+    networks: [ztmdcg-net]
+
+  # profiles 让 `up -d --wait` 跳过这两个一次性容器:--wait 把「容器已退出」
+  # 一律判为失败,哪怕退出码是 0,一次性任务放进去必然把 Job 弄红。
+  # 部署脚本改用 `run --rm` 显式执行,退出码照样能传出来。
   nacos-init:
     image: curlimages/curl:8.10.1
+    profiles: ["init"]
     depends_on:
       nacos:
         condition: service_healthy

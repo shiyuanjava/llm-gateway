@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 由 compose 的 mysql-init 服务执行(见 deploy/platform/docker-compose.yml),
+# 不再挂到 mysql 的 /docker-entrypoint-initdb.d —— 那里只在数据卷为空时跑一次。
+# 因为跑在独立容器里,必须走 TCP 连 mysql 服务名,不能用 --protocol=socket。
 required=(
   MYSQL_ROOT_PASSWORD
   SOFT_MYSQL_DATABASE
@@ -19,7 +22,7 @@ for name in "${required[@]}"; do
   fi
 done
 
-mysql --protocol=socket -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
+mysql -h "${MYSQL_HOST:-mysql}" -P 3306 -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
 CREATE DATABASE IF NOT EXISTS ${SOFT_MYSQL_DATABASE}
   CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 CREATE USER IF NOT EXISTS '${SOFT_MYSQL_USER}'@'%'
