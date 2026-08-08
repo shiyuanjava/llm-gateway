@@ -80,13 +80,13 @@ spec:
               mountPath: /app/logs
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/readiness
               port: 9090
             initialDelaySeconds: 25
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/liveness
               port: 9090
             initialDelaySeconds: 60
             periodSeconds: 20
@@ -100,4 +100,3 @@ spec:
         - name: logs
           persistentVolumeClaim:
             claimName: gateway-logs
-

@@ -6,7 +6,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.llm.gateway.Fixtures;
 import com.llm.gateway.config.GatewayProperties;
+import com.llm.gateway.redis.GatewayRedisProperties;
+import com.llm.gateway.redis.RedisAvailabilityCircuit;
+import com.llm.gateway.redis.RedisCommandExecutor;
+import com.llm.gateway.redis.RedisCommandMetrics;
+import com.llm.gateway.redis.RedisKeyspace;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,8 +26,18 @@ class CacheStoreWiringTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(GatewayProperties.class, Fixtures::properties)
+            .withBean(GatewayRedisProperties.class, GatewayRedisProperties::new)
+            .withBean(RedisKeyspace.class, () -> new RedisKeyspace(new GatewayRedisProperties()))
+            .withBean(SimpleMeterRegistry.class, SimpleMeterRegistry::new)
+            .withBean(RedisCommandMetrics.class, () -> new RedisCommandMetrics(new SimpleMeterRegistry()))
+            .withBean(RedisAvailabilityCircuit.class, () -> new RedisAvailabilityCircuit(new GatewayRedisProperties()))
+            .withBean(
+                    RedisCommandExecutor.class,
+                    () -> new RedisCommandExecutor(
+                            new RedisAvailabilityCircuit(new GatewayRedisProperties()),
+                            new RedisCommandMetrics(new SimpleMeterRegistry())))
             .withBean(ObjectMapper.class, ObjectMapper::new)
-            .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
+            .withBean("cacheRedisTemplate", StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
             .withUserConfiguration(ExactMatchCache.class, RedisResponseCache.class);
 
     @Test

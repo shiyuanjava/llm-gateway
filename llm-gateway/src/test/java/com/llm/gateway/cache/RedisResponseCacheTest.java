@@ -12,6 +12,11 @@ import org.springframework.data.redis.core.ValueOperations;
 import com.llm.gateway.Fixtures;
 import com.llm.gateway.api.dto.ChatCompletionResponse;
 import com.llm.gateway.api.dto.Usage;
+import com.llm.gateway.redis.GatewayRedisProperties;
+import com.llm.gateway.redis.RedisAvailabilityCircuit;
+import com.llm.gateway.redis.RedisCommandExecutor;
+import com.llm.gateway.redis.RedisCommandMetrics;
+import com.llm.gateway.redis.RedisKeyspace;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -23,6 +28,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RedisResponseCacheTest {
@@ -31,25 +37,32 @@ class RedisResponseCacheTest {
 
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-    // Fixtures 默认 TTL 300s
-    private final RedisResponseCache cache =
-            new RedisResponseCache(template, new ObjectMapper(), Fixtures.properties());
+
+    private final GatewayRedisProperties redisProperties = new GatewayRedisProperties();
+    private final RedisKeyspace keyspace = new RedisKeyspace(redisProperties);
+    private final RedisCommandMetrics metrics = mock(RedisCommandMetrics.class);
+    private final RedisCommandExecutor executor =
+            new RedisCommandExecutor(new RedisAvailabilityCircuit(redisProperties), metrics);
+    private RedisResponseCache cache;
 
     @BeforeEach
     void setUp() {
         when(template.opsForValue()).thenReturn(valueOps);
+        cache = new RedisResponseCache(
+                template, new ObjectMapper(), Fixtures.properties(), redisProperties, keyspace, executor, metrics);
     }
 
     @Test
-    void shouldRoundTripThroughRedisJsonWithKeyPrefixAndTtl() {
+    void shouldRoundTripThroughRedisJsonWithV2KeyAndTtl() {
         ChatCompletionResponse response = ChatCompletionResponse.singleMessage(
                 "id-1", 123L, "mock-small", "hello", "stop", Usage.of(10, 5, 4, 2));
+        String redisKey = keyspace.key("cache", "abc", "exact");
         cache.put("abc", response);
 
         ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
-        verify(valueOps).set(eq("gw:cache:exact:abc"), json.capture(), eq(Duration.ofSeconds(300)));
+        verify(valueOps).set(eq(redisKey), json.capture(), eq(Duration.ofSeconds(300)));
 
-        when(valueOps.get("gw:cache:exact:abc")).thenReturn(json.getValue());
+        when(valueOps.get(redisKey)).thenReturn(json.getValue());
         Optional<ChatCompletionResponse> restored = cache.get("abc");
 
         assertTrue(restored.isPresent());
@@ -85,5 +98,33 @@ class RedisResponseCacheTest {
                 ChatCompletionResponse.singleMessage("id-1", 123L, "mock-small", "hello", "stop", Usage.of(1, 1));
 
         assertDoesNotThrow(() -> cache.put("abc", response));
+    }
+
+    @Test
+    void skipsOversizedValueBeforeRedisWrite() {
+        redisProperties.setCacheMaxValueBytes(16);
+        cache = new RedisResponseCache(
+                template, new ObjectMapper(), Fixtures.properties(), redisProperties, keyspace, executor, metrics);
+        ChatCompletionResponse response =
+                ChatCompletionResponse.singleMessage("id-1", 123L, "mock-small", "hello", "stop", Usage.of(1, 1));
+
+        cache.put("abc", response);
+
+        verifyNoInteractions(valueOps);
+        verify(metrics).cacheValueOversize();
+    }
+
+    @Test
+    void oversizeMetricFailureDoesNotBreakCacheFailOpen() {
+        redisProperties.setCacheMaxValueBytes(16);
+        cache = new RedisResponseCache(
+                template, new ObjectMapper(), Fixtures.properties(), redisProperties, keyspace, executor, metrics);
+        doThrow(new IllegalStateException("metrics unavailable")).when(metrics).cacheValueOversize();
+        ChatCompletionResponse response =
+                ChatCompletionResponse.singleMessage("id-1", 123L, "mock-small", "hello", "stop", Usage.of(1, 1));
+
+        assertDoesNotThrow(() -> cache.put("abc", response));
+
+        verifyNoInteractions(valueOps);
     }
 }

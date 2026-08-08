@@ -31,7 +31,7 @@ spec:
           image: redis:7-alpine
           command: ["sh", "-c"]
           args:
-            - exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "$REDIS_PASSWORD"
+            - exec redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy noeviction --requirepass "$REDIS_PASSWORD"
           env:
             - name: REDIS_PASSWORD
               valueFrom:
@@ -57,4 +57,3 @@ spec:
         resources:
           requests:
             storage: 2Gi
-

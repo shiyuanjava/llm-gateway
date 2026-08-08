@@ -2,21 +2,17 @@ spring:
   application:
     name: llm-gateway
   config:
-    # optional: Nacos 不可达时用本地配置兜底启动,不失败
     import: "optional:nacos:llm-gateway.yaml"
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
       config:
-        # 文件扩展名决定 Nacos 侧配置的解析器
         file-extension: yaml
       discovery:
-        # 本地无 Nacos 时避免注册失败刷屏:由环境变量整体开关
         enabled: ${NACOS_DISCOVERY_ENABLED:true}
     sentinel:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:localhost:8858}
-      # 首次请求才初始化会丢第一批指标,eager 提前建立心跳
       eager: true
       datasource:
         param-flow:
@@ -26,32 +22,18 @@ spring:
             group-id: DEFAULT_GROUP
             data-type: json
             rule-type: param-flow
-  # 流式响应会长时间占用请求线程（生成可达分钟级），虚拟线程使其不消耗平台线程池
   threads:
     virtual:
       enabled: true
-  # 优雅停机第二段:给进行中的请求(含 SSE 流)最多 30s 收尾
   lifecycle:
     timeout-per-shutdown-phase: 30s
   jackson:
-    # 默认 camelCase（管理端 Admin API 与前端一致）；OpenAI/供应商 DTO 用 @JsonProperty 单独固定 snake_case
     default-property-inclusion: non_null
     deserialization:
-      # 容忍各供应商响应里把基本类型字段给成 null（Jackson 3 默认会报错），null -> 0
       fail-on-null-for-primitives: false
-  # Redis 连接(仅 gateway.cache.store=redis 时实际使用;Lettuce 惰性连接,memory 模式不连)
-  # timeout 1s:Redis 挂死时请求最多等 1s,配合 fail-open 不拖垮主链路
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      # 本地无密码 Redis 留空即可;compose 部署由 REDIS_PASSWORD 注入
-      password: ${REDIS_PASSWORD:}
-      timeout: 1s
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:llm_gateway}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${MYSQL_USER:root}
-    # 开发默认密码;prod profile 强制覆盖为无默认的 ${MYSQL_PASSWORD}(见 application-prod.yaml)
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
@@ -62,14 +44,11 @@ spring:
       max-lifetime: 1800000
   flyway:
     placeholders:
-      # 演示 Key 是否随迁移清除:开发保留(false),prod profile 置 true(见 V3 迁移脚本)
       purge_demo_api_keys: "false"
 
-# 优雅停机:SIGTERM 后不再接受新请求,等待进行中的请求完成
 server:
   shutdown: graceful
 
-# MyBatis-Plus：下划线<->驼峰自动映射，主键自增
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -78,12 +57,9 @@ mybatis-plus:
     db-config:
       id-type: auto
 
-# Actuator:管理端口分离(主端口 8080 上 /actuator/** 不存在);
-# 9090 仅容器网络/内网使用(healthcheck、Prometheus 抓取),部署时不映射宿主机
 management:
   server:
     port: ${GATEWAY_MANAGEMENT_PORT:9090}
-  # 缓存 fail-open:Redis 挂了网关照常服务,不能让 health 整体 DOWN 误导 compose healthcheck
   health:
     redis:
       enabled: false
@@ -95,27 +71,15 @@ management:
       exposure:
         include: health, info, metrics, prometheus
 
-# ===================== 网关配置 =====================
-# 说明：API Key、路由规则、计费单价已迁移到数据库（见 db/migration 迁移脚本），不再写在这里。
 gateway:
-  # ---- 浏览器入口 CORS ----
   cors:
-    # 新配置名覆盖管理接口与 Playground(/v1);旧环境变量/属性路径保留兼容。
-    # 开发默认放行固定 Vite 端口;生产 profile 默认收敛为空。
     allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:${GATEWAY_ADMIN_ALLOWED_ORIGINS:${gateway.admin.allowed-origins:http://localhost:5173}}}
     max-age-seconds: ${GATEWAY_CORS_MAX_AGE_SECONDS:3600}
-
-  # ---- 路由：默认物理模型（请求 model 无法识别时回退）----
   routing:
     default-model: deepseek-v4-pro
-
-  # ---- 默认 LLM：请求 model 填 "default" 时走它（由 LLM_PROVIDER/LLM_MODEL 注入）----
   llm:
     provider: ${LLM_PROVIDER:deepseek}
     model: ${LLM_MODEL:deepseek-v4-pro}
-
-  # ---- 供应商接入（密钥经占位符注入:生产在 Nacos llm-gateway.yaml 里发布同名键,
-  #      显式设置的环境变量优先(CI/本地);缺省为空则该供应商不可用,会自动 Fallback）----
   providers:
     deepseek:
       base-url: https://api.deepseek.com
@@ -129,49 +93,59 @@ gateway:
     mock:
       base-url: ""
       api-key: ""
-
-  # ---- 限流 ----
   rate-limit:
-    # memory: 单机令牌桶(本地开发,无 Nacos 依赖)/ sentinel: 热点参数限流(规则在 Nacos)
     store: ${GATEWAY_RATE_LIMIT_STORE:memory}
     requests-per-minute: 60
-
-  # ---- 配额 ----
   quota:
     tokens-per-tenant: 1000000
-
-  # ---- 缓存 ----
   cache:
     enabled: true
-    # 缓存后端:memory 单机内存 / redis(跨重启、多实例共享)
-    store: memory
+    store: ${GATEWAY_CACHE_STORE:memory}
     ttl-seconds: 300
     semantic:
       enabled: false
       similarity-threshold: 0.92
-
-  # ---- 安全护栏 ----
+  redis:
+    namespace: ${GATEWAY_REDIS_NAMESPACE:llmgw}
+    environment: ${GATEWAY_ENVIRONMENT:local}
+    health-enabled: ${GATEWAY_REDIS_HEALTH_ENABLED:false}
+    cache-max-value-bytes: ${GATEWAY_REDIS_CACHE_MAX_VALUE_BYTES:524288}
+    circuit:
+      failure-threshold: ${GATEWAY_REDIS_CIRCUIT_FAILURE_THRESHOLD:3}
+      open-duration: ${GATEWAY_REDIS_CIRCUIT_OPEN_DURATION:2s}
+    control:
+      mode: ${GATEWAY_REDIS_CONTROL_MODE:standalone}
+      nodes: ["${GATEWAY_REDIS_CONTROL_NODE:${REDIS_HOST:localhost}:${REDIS_PORT:6379}}"]
+      master: ${GATEWAY_REDIS_CONTROL_MASTER:}
+      username: ${GATEWAY_REDIS_CONTROL_USERNAME:}
+      password: ${GATEWAY_REDIS_CONTROL_PASSWORD:${REDIS_PASSWORD:}}
+      database: ${GATEWAY_REDIS_CONTROL_DATABASE:0}
+      max-redirects: ${GATEWAY_REDIS_CONTROL_MAX_REDIRECTS:5}
+      ssl: ${GATEWAY_REDIS_CONTROL_SSL:false}
+      command-timeout: ${GATEWAY_REDIS_CONTROL_COMMAND_TIMEOUT:500ms}
+    cache:
+      mode: ${GATEWAY_REDIS_CACHE_MODE:standalone}
+      nodes: ["${GATEWAY_REDIS_CACHE_NODE:${REDIS_HOST:localhost}:${REDIS_PORT:6379}}"]
+      master: ${GATEWAY_REDIS_CACHE_MASTER:}
+      username: ${GATEWAY_REDIS_CACHE_USERNAME:}
+      password: ${GATEWAY_REDIS_CACHE_PASSWORD:${REDIS_PASSWORD:}}
+      database: ${GATEWAY_REDIS_CACHE_DATABASE:0}
+      max-redirects: ${GATEWAY_REDIS_CACHE_MAX_REDIRECTS:5}
+      ssl: ${GATEWAY_REDIS_CACHE_SSL:false}
+      command-timeout: ${GATEWAY_REDIS_CACHE_COMMAND_TIMEOUT:250ms}
   guardrail:
-    sensitive-words: [ "制造炸弹", "自杀方法" ]
-
-  # ---- 容错 ----
+    sensitive-words: ["制造炸弹", "自杀方法"]
   resilience:
     max-retries: 2
     circuit-breaker:
       failure-threshold: 5
       open-seconds: 30
-
-  # ---- 出站 HTTP（调用供应商）超时 ----
   http:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
-    # 单条流式响应总时长上限(读超时只限帧间停顿,这里限整条流的 wall-clock)
     stream-max-duration-ms: 300000
-
-  # ---- 管理端鉴权（密钥同上:生产值在 Nacos,环境变量可覆盖）----
   admin:
     jwt-secret: ${GATEWAY_JWT_SECRET:}
-    # 密钥轮换:换新 GATEWAY_JWT_SECRET 时把旧密钥放这里(逗号分隔),旧 token 在 TTL 内仍可验签;过渡期后清空
     jwt-secrets-fallback: ${GATEWAY_JWT_SECRETS_FALLBACK:}
     token-ttl-minutes: 120
     bootstrap-username: ${ADMIN_USERNAME:}
