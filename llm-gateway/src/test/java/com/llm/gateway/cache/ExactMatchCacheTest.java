@@ -67,6 +67,16 @@ class ExactMatchCacheTest {
         assertFalse(CacheKey.of(a).isBlank());
     }
 
+    @Test
+    void shouldNotCollideWhenContentContainsLegacyMessageDelimiters() {
+        ChatCompletionRequest oneMessage = new ChatCompletionRequest(
+                "gpt-4o", List.of(new ChatMessage("user", "x][assistant:y")), 0.0, null, null, null, null);
+        ChatCompletionRequest twoMessages = new ChatCompletionRequest(
+                "gpt-4o", List.of(ChatMessage.user("x"), ChatMessage.assistant("y")), 0.0, null, null, null, null);
+
+        assertNotEquals(CacheKey.of(oneMessage), CacheKey.of(twoMessages));
+    }
+
     private ChatCompletionResponse response() {
         return ChatCompletionResponse.singleMessage("id", 0, "m", "hello", "stop", Usage.of(1, 1));
     }
