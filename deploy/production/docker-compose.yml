@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      GATEWAY_ENVIRONMENT: prod
       MYSQL_HOST: ztmdcg-mysql
       MYSQL_PORT: "3306"
       MYSQL_DB: ${GATEWAY_MYSQL_DATABASE:-llm_gateway}
@@ -17,6 +18,10 @@ services:
       REDIS_HOST: ztmdcg-redis-gateway
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${GATEWAY_REDIS_PASSWORD:?set GATEWAY_REDIS_PASSWORD}
+      GATEWAY_REDIS_CONTROL_NODE: ztmdcg-redis-gateway:6379
+      GATEWAY_REDIS_CACHE_NODE: ztmdcg-redis-gateway:6379
+      GATEWAY_REDIS_CONTROL_MODE: standalone
+      GATEWAY_REDIS_CACHE_MODE: standalone
       NACOS_SERVER_ADDR: nacos:8848
       SENTINEL_DASHBOARD: sentinel-dashboard:8858
       GATEWAY_RATE_LIMIT_STORE: sentinel
@@ -27,7 +32,7 @@ services:
     volumes:
       - gateway-logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9090/actuator/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9090/actuator/health/readiness"]
       interval: 10s
       timeout: 5s
       retries: 18

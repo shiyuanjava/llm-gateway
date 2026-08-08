@@ -57,9 +57,91 @@ function Test-Compose {
     }
 }
 
-Test-Compose -ComposeFile (Join-Path $gatewayRepo 'deploy\platform\docker-compose.yml') -EnvFile (Join-Path $gatewayRepo 'deploy\platform\.env.example')
-Test-Compose -ComposeFile (Join-Path $gatewayRepo 'deploy\production\docker-compose.yml') -EnvFile (Join-Path $gatewayRepo 'deploy\production\.env.example')
+function Get-ComposeModel {
+    param([string]$ComposeFile, [string]$EnvFile)
+
+    $renderedJson = docker compose --env-file $EnvFile -f $ComposeFile config --format json
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose config failed: $ComposeFile"
+    }
+
+    try {
+        return ($renderedJson | ConvertFrom-Json)
+    }
+    catch {
+        throw "docker compose config returned invalid JSON: $ComposeFile"
+    }
+}
+
+$platformComposePath = Join-Path $gatewayRepo 'deploy\platform\docker-compose.yml'
+$platformEnvPath = Join-Path $gatewayRepo 'deploy\platform\.env.example'
+$productionComposePath = Join-Path $gatewayRepo 'deploy\production\docker-compose.yml'
+$productionEnvPath = Join-Path $gatewayRepo 'deploy\production\.env.example'
+$platformComposeModel = Get-ComposeModel -ComposeFile $platformComposePath -EnvFile $platformEnvPath
+$productionComposeModel = Get-ComposeModel -ComposeFile $productionComposePath -EnvFile $productionEnvPath
 Test-Compose -ComposeFile (Join-Path $softRepo 'deploy\production\docker-compose.yml') -EnvFile (Join-Path $softRepo 'deploy\production\.env.example')
+
+$composeContractViolations = @()
+$productionGateway = $productionComposeModel.services.gateway
+$gatewayHealthcheck = @($productionGateway.healthcheck.test) -join ' '
+if ($gatewayHealthcheck -notmatch [regex]::Escape('/actuator/health/readiness')) {
+    $composeContractViolations += 'Production gateway healthcheck must use /actuator/health/readiness'
+}
+if ($gatewayHealthcheck -match '/actuator/health(?:\s|["'']|$)') {
+    $composeContractViolations += 'Production gateway healthcheck must not use the root /actuator/health endpoint'
+}
+
+$requiredGatewayEnvironment = [ordered]@{
+    GATEWAY_ENVIRONMENT = 'prod'
+    GATEWAY_REDIS_CONTROL_NODE = 'ztmdcg-redis-gateway:6379'
+    GATEWAY_REDIS_CACHE_NODE = 'ztmdcg-redis-gateway:6379'
+    GATEWAY_REDIS_CONTROL_MODE = 'standalone'
+    GATEWAY_REDIS_CACHE_MODE = 'standalone'
+}
+foreach ($setting in $requiredGatewayEnvironment.GetEnumerator()) {
+    $property = $productionGateway.environment.PSObject.Properties[$setting.Key]
+    if (-not $property -or [string]$property.Value -cne $setting.Value) {
+        $actualValue = if ($property) { [string]$property.Value } else { '<missing>' }
+        $composeContractViolations += "Production gateway environment $($setting.Key) must be '$($setting.Value)' (actual: '$actualValue')"
+    }
+}
+
+$gatewayRedis = $platformComposeModel.services.'redis-gateway'
+$gatewayRedisCommand = @($gatewayRedis.command) -join ' '
+$requiredGatewayRedisOptions = [ordered]@{
+    'appendonly yes' = '--appendonly(?:\s+|=)yes(?:\s|$)'
+    'appendfsync everysec' = '--appendfsync(?:\s+|=)everysec(?:\s|$)'
+    'maxmemory-policy noeviction' = '--maxmemory-policy(?:\s+|=)noeviction(?:\s|$)'
+}
+foreach ($option in $requiredGatewayRedisOptions.GetEnumerator()) {
+    if ($gatewayRedisCommand -notmatch $option.Value) {
+        $composeContractViolations += "Platform redis-gateway command must contain $($option.Key)"
+    }
+}
+
+$forbiddenGatewayRedisOptions = [ordered]@{
+    'appendonly no' = '--appendonly(?:\s+|=)no(?:\s|$)'
+    'maxmemory-policy allkeys-lru' = '--maxmemory-policy(?:\s+|=)allkeys-lru(?:\s|$)'
+}
+foreach ($option in $forbiddenGatewayRedisOptions.GetEnumerator()) {
+    if ($gatewayRedisCommand -match $option.Value) {
+        $composeContractViolations += "Platform redis-gateway command must not contain $($option.Key)"
+    }
+}
+
+$gatewayRedisDataVolume = @($gatewayRedis.volumes) | Where-Object {
+    $_.type -eq 'bind' -and
+    $_.source -eq '/data/ztmdcg/redis-gateway' -and
+    $_.target -eq '/data'
+}
+if (-not $gatewayRedisDataVolume) {
+    $composeContractViolations += 'Platform redis-gateway must bind /data/ztmdcg/redis-gateway to /data'
+}
+
+if ($composeContractViolations) {
+    throw ('Rendered production Compose contract violations:' + [Environment]::NewLine +
+        (($composeContractViolations | ForEach-Object { " - $_" }) -join [Environment]::NewLine))
+}
 
 $bashScripts = @(
     (Join-Path $gatewayRepo 'deploy\platform\mysql\init\10-create-app-databases.sh'),
@@ -140,8 +222,14 @@ foreach ($pattern in $requiredRestorePatterns) {
 
 $guide = Get-Content -LiteralPath $guidePath -Raw
 $requiredGuidePatterns = @(
-    'gitlab.ztmdcg.cn',
-    'registry.ztmdcg.cn',
+    'https://117.72.220.94',
+    '117.72.220.94:5050',
+    "letsencrypt['enable'] = false",
+    'subjectAltName = IP:117.72.220.94',
+    '/etc/docker/certs.d/117.72.220.94:5050',
+    '--tls-ca-file',
+    '--insecure-registry=117.72.220.94:5050',
+    'git@117.72.220.94:ztmdcg/llm-gateway.git',
     'nslookup ztmdcg.cn',
     'openssl rand -hex 32',
     'ztmdcg-production',
@@ -156,9 +244,71 @@ foreach ($pattern in $requiredGuidePatterns) {
     }
 }
 
-$forbiddenGuidePattern = '10\.1\.0\.16|172\.16\.0\.5|:5050|deploy_k3s|\bK3s\b|manual-deploy'
-if ($guide -match $forbiddenGuidePattern) {
-    throw "Operator guide still contains retired deployment content: $($Matches[0])"
+# The JD Cloud host has no ICP filing, so the guide must not contain an actionable
+# domain-based GitLab/Registry address or any Let's Encrypt issuance step for it.
+# The recovery section legitimately quotes the failed command and the bad config line
+# so operators can recognise their own broken state, so a bare mention of the domain
+# cannot be banned outright. The distinction is column position: a real config line
+# starts at column 0 inside a fenced block, while every legitimate mention is inline
+# code inside a sentence. Anchor the config patterns to line start.
+$forbiddenGuidePatterns = @(
+    'https://registry\.ztmdcg\.cn',
+    "(?m)^external_url\s+'https://gitlab",
+    "(?m)^registry_external_url\s+'https://registry",
+    '--url\s+"https://gitlab',
+    'git@gitlab\.ztmdcg\.cn',
+    "(?m)^letsencrypt\['enable'\] = true",
+    'renew-le-certs',
+    '10\.1\.0\.16',
+    '172\.16\.0\.5',
+    'deploy_k3s',
+    '\bK3s\b',
+    'manual-deploy'
+)
+foreach ($pattern in $forbiddenGuidePatterns) {
+    if ($guide -match $pattern) {
+        throw "Operator guide still contains retired deployment content: $($Matches[0])"
+    }
+}
+
+# The IP-based external_url must actually be present as a config line, not just prose.
+if ($guide -notmatch "(?m)^external_url\s+'https://117\.72\.220\.94'") {
+    throw 'Operator guide does not set external_url to the IP-based GitLab address'
+}
+if ($guide -notmatch "(?m)^registry_external_url\s+'https://117\.72\.220\.94:5050'") {
+    throw 'Operator guide does not set registry_external_url to the IP-based registry'
+}
+if ($guide -notmatch "(?m)^letsencrypt\['enable'\] = false") {
+    throw 'Operator guide does not disable Let us Encrypt on the unfiled JD Cloud host'
+}
+
+# Private-CA trust boundary: cross-host pulls must verify fully; only the JD Cloud
+# local dind is allowed to skip verification.
+$tencentInsecureRule = ($guide -split "`r?`n") | Where-Object {
+    $_ -match 'daemon\.json' -and $_ -match 'insecure-registries'
+}
+if (-not $tencentInsecureRule) {
+    throw 'Operator guide must forbid insecure-registries on the Tencent deployment host'
+}
+
+foreach ($ciPath in @((Join-Path $gatewayRepo '.gitlab-ci.yml'), (Join-Path $softRepo '.gitlab-ci.yml'))) {
+    $ci = Get-Content -LiteralPath $ciPath -Raw
+    if ($ci -notmatch [regex]::Escape('--insecure-registry=117.72.220.94:5050')) {
+        throw "CI file does not let dind push to the private-CA registry: $ciPath"
+    }
+}
+
+foreach ($envPath in @(
+    (Join-Path $gatewayRepo 'deploy\production\.env.example'),
+    (Join-Path $softRepo 'deploy\production\.env.example')
+)) {
+    $envExample = Get-Content -LiteralPath $envPath -Raw
+    if ($envExample -match 'registry\.ztmdcg\.cn') {
+        throw "Env example still references the retired registry domain: $envPath"
+    }
+    if ($envExample -notmatch [regex]::Escape('117.72.220.94:5050/ztmdcg/')) {
+        throw "Env example does not use the IP-based registry path: $envPath"
+    }
 }
 
 $softReadme = Get-Content -LiteralPath $softReadmePath -Raw

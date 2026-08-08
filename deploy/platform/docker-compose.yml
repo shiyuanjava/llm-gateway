@@ -54,7 +54,8 @@ services:
     restart: unless-stopped
     environment:
       GATEWAY_REDIS_PASSWORD: ${GATEWAY_REDIS_PASSWORD:?set GATEWAY_REDIS_PASSWORD}
-    command: ["sh", "-ec", "exec redis-server --save \"\" --appendonly no --maxmemory 192mb --maxmemory-policy allkeys-lru --requirepass \"$$GATEWAY_REDIS_PASSWORD\""]
+    command: ["sh", "-ec", "exec redis-server --save \"\" --appendonly yes --appendfsync everysec --maxmemory 192mb --maxmemory-policy noeviction --requirepass \"$$GATEWAY_REDIS_PASSWORD\""]
+    volumes: [/data/ztmdcg/redis-gateway:/data]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$GATEWAY_REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s

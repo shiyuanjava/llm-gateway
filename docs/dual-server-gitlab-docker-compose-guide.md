@@ -1,11 +1,36 @@
 # 双服务器 GitLab CI/CD + Docker Compose 部署操作手册
 
-- 版本：2026-08-08
+- 版本：2026-08-08（修订：京东云 GitLab 改为 IP + 私有 CA 访问）
 - 适用系统：Ubuntu Server 22.04 LTS 64 位
 - 适用仓库：`llm-gateway-project`、`软项智训`
 - 目标：推送 `main` 后自动测试、构建镜像、推送 Registry、替换腾讯云容器；失败时不影响现有版本或自动回滚
 
 本文按首次重装顺序编写。除明确标注“本地电脑”外，命令均在对应云服务器执行。所有 `<...>` 都必须替换，不要把尖括号原样粘贴。
+
+## 本次修订：京东云为什么不再使用域名
+
+京东云实例尚未完成 ICP 备案，云厂商的“未备案拦截”会在 80 端口按 `Host` 头拦截 `gitlab.ztmdcg.cn` 的请求并直接返回 `403`。Let's Encrypt 的 HTTP-01 校验必须访问 `http://gitlab.ztmdcg.cn/.well-known/acme-challenge/...`，请求在到达 GitLab 之前就被拦截页面截走，因此签发一定失败：
+
+```text
+Validation failed, unable to request certificate...
+Invalid response from http://gitlab.ztmdcg.cn/.well-known/acme-challenge/... 403
+```
+
+这不是 GitLab、DNS 或 certbot 的配置问题，**在备案通过之前重试任何次数都不会成功**。因此本文对京东云做如下调整：
+
+| 项目 | 原方案（已废弃） | 现方案 |
+|---|---|---|
+| GitLab 地址 | `gitlab.ztmdcg.cn` 域名 | `https://117.72.220.94` |
+| Registry 地址 | `registry.ztmdcg.cn` 域名 | `https://117.72.220.94:5050` |
+| 证书来源 | Let's Encrypt HTTP-01 | 自建私有 CA，叶证书写入 `subjectAltName = IP:117.72.220.94` |
+| DNS 记录 | `gitlab`、`registry` 两条 A 记录 | 不再需要，**必须删除** |
+| 访问方式 | 浏览器访问域名 | 内部开发人员直接访问 IP |
+
+腾讯云 `ztmdcg.cn` 与 `gateway.ztmdcg.cn` 已完成备案，**对外服务与 Let's Encrypt 流程完全不变**，本次修订不影响第 7 章及之后的对外入口。
+
+仍然使用 HTTPS 而不是明文 HTTP，是因为 GitLab 登录密码、Git 推送内容、Registry 凭据都要穿越公网；私有 CA 只解决“谁来签发”，不降低传输加密强度。代价是 CA 证书必须手工分发到每一个客户端，见第 3 章。
+
+备案通过后若想切回域名：在 DNSPod 补回 `gitlab`、`registry` 两条 A 记录，把 `external_url` / `registry_external_url` 改为域名，把 `letsencrypt` 开关翻回启用，`reconfigure` 拿到公信证书后，再按第 3.8 节反向清理各客户端的 CA 信任。切换前先确认 `curl -I http://<域名>/` 不再返回拦截页面的 `403`，否则会重现同一个失败。
 
 ## 阅读与执行规则
 
@@ -17,6 +42,7 @@
 |---|---|---|
 | 重装、时区、swap、基础包 | 系统版本/时间/swap 与本文一致 | 保留完整错误输出；先修复云控制台、APT、磁盘或 DNS，再继续 |
 | Docker、GitLab、Runner | 对应 `version`、`status`、`verify` 命令退出码为 0 | 查看 `systemctl status`、`journalctl` 或 `gitlab-ctl tail`，服务未健康前不进入下一章 |
+| 私有 CA 与证书分发 | `openssl verify` 与 `curl --cacert` 成功，`docker login` 不报 `x509` | 重新核对 SAN 中的 IP、CA 文件路径与属主；不要改用 `-k`、`--insecure` 或明文 HTTP 绕过 |
 | 目录、sudoers、密钥 | `stat`/`test`/`visudo -cf` 检查通过 | 恢复正确属主和权限；不要临时放宽到 `777` 或 `NOPASSWD: ALL` |
 | Nginx、证书 | `nginx -t` 与 `certbot renew --dry-run` 成功 | 保留旧配置，不 reload；检查 DNS、80/443、安全组和证书路径 |
 | CI/CD 发布 | Pipeline 全绿，Compose 容器为 `healthy` | 查看失败 Job 和对应 Compose 日志；不要手工改 `latest` 或绕过测试 |
@@ -33,18 +59,19 @@
 
 ```text
 本地电脑
-  ├─ push llm-gateway/main
-  └─ push soft-training/main
+  ├─ push llm-gateway/main      （SSH：git@117.72.220.94）
+  └─ push soft-training/main    （SSH：git@117.72.220.94）
            │
            ▼
-京东云 117.72.220.94
-  ├─ gitlab.ztmdcg.cn
-  ├─ registry.ztmdcg.cn
+京东云 117.72.220.94（未备案，只用 IP）
+  ├─ GitLab CE      https://117.72.220.94
+  ├─ Registry       https://117.72.220.94:5050
+  ├─ 私有 CA        /etc/gitlab/ssl/ztmdcg-ca.crt
   └─ Docker Runner（并发 1）
-           │ HTTPS 拉取 SHA 镜像
+           │ HTTPS 拉取 SHA 镜像（腾讯云用私有 CA 校验）
            ▼
-腾讯云 119.29.120.205
-  ├─ Nginx :80/:443
+腾讯云 119.29.120.205（已备案，对外用域名）
+  ├─ Nginx :80/:443 → ztmdcg.cn、gateway.ztmdcg.cn
   ├─ MySQL + 两套 Redis + MinIO + Qdrant + Nacos + Sentinel
   ├─ Gateway backend/UI
   └─ 软项智训 backend/frontend
@@ -52,12 +79,13 @@
 
 ### 0.2 公网与本机端口
 
-公网只开放 SSH、HTTP 和 HTTPS。`80` 端口用于证书校验并将普通流量跳转到 `443`；对外 API 使用 HTTPS。
+腾讯云是对外入口，`80` 用于 Let's Encrypt 校验并跳转 `443`，对外 API 使用 HTTPS。京东云是内部开发设施，只对开发人员和腾讯云开放，**不开放 80 端口**：备案通过前 80 端口会被拦截页面接管，而 IP + 私有 CA 方案不需要它。
 
 | 机器 | 监听 | 用途 | 安全组 |
 |---|---:|---|---|
-| 京东云 | `22` | SSH / Git over SSH | 仅管理人员公网 IP |
-| 京东云 | `80`、`443` | GitLab、Registry、证书 | 公网 |
+| 京东云 | `22` | SSH / Git over SSH（开发人员推送） | 管理人员与开发人员公网 IP |
+| 京东云 | `443` | GitLab Web/API（`https://117.72.220.94`） | 开发人员公网 IP + `119.29.120.205` |
+| 京东云 | `5050` | Container Registry（`https://117.72.220.94:5050`） | `119.29.120.205` + 管理人员公网 IP |
 | 腾讯云 | `22` | SSH | 仅管理人员公网 IP |
 | 腾讯云 | `80`、`443` | `ztmdcg.cn`、`gateway.ztmdcg.cn` | 公网 |
 | 腾讯云 | `127.0.0.1:18080` | 软项智训前端 | 不开放 |
@@ -101,36 +129,44 @@
 
 ### 1.1 DNSPod 记录
 
-在腾讯云 DNSPod 为 `ztmdcg.cn` 添加：
+在腾讯云 DNSPod 为 `ztmdcg.cn` 只保留以下三条记录，全部指向已备案的腾讯云：
 
 | 主机记录 | 类型 | 记录值 |
 |---|---|---|
 | `@` | A | `119.29.120.205` |
 | `www` | CNAME | `ztmdcg.cn` |
 | `gateway` | A | `119.29.120.205` |
-| `gitlab` | A | `117.72.220.94` |
-| `registry` | A | `117.72.220.94` |
+
+如果之前已经添加过 `gitlab` 和 `registry` 两条指向 `117.72.220.94` 的 A 记录，**现在把它们删除**。留着它们只会让人再去对未备案实例试一次 certbot，并再拿到同一个 `403`。京东云一律使用 IP 访问，不需要任何 DNS 记录。
 
 在本地电脑验证；任务要求使用系统自带的 `nslookup`，不要只看浏览器缓存：
 
 ```powershell
 nslookup ztmdcg.cn
 nslookup gateway.ztmdcg.cn
-nslookup gitlab.ztmdcg.cn
-nslookup registry.ztmdcg.cn
 ```
 
-成功标志：四个域名分别解析到上表 IP。证书签发前必须先完成解析。
+成功标志：两个域名都解析到 `119.29.120.205`。腾讯云证书签发前必须先完成解析。
+
+顺带确认 `gitlab.ztmdcg.cn` 已经无法解析或不再指向京东云：
+
+```powershell
+nslookup gitlab.ztmdcg.cn
+```
+
+成功标志：返回 `NXDOMAIN` / 找不到记录。若仍解析到 `117.72.220.94`，说明 DNSPod 记录没删干净，回到控制台删除后再继续。
 
 ### 1.2 京东云安全组
 
-入站规则：
+京东云不面向公众，只服务于开发人员和腾讯云拉镜像。入站规则：
 
-- TCP `22`：仅你的固定公网 IP；多人协作时逐个添加来源。
-- TCP `80`：`0.0.0.0/0`、`::/0`。
-- TCP `443`：`0.0.0.0/0`、`::/0`。
+- TCP `22`：管理人员与需要 push 的开发人员固定公网 IP，逐个添加来源。
+- TCP `443`：开发人员固定公网 IP，另加 `119.29.120.205/32`（Runner 克隆代码需要）。
+- TCP `5050`：`119.29.120.205/32`，另加管理人员 IP 便于排查 Registry。
 
-不要开放 GitLab 内置 PostgreSQL、Redis、Gitaly 等内部端口。
+不要把 `443`、`5050` 放开到 `0.0.0.0/0`：私有 CA 只保证传输加密，不提供任何访问控制，公网暴露的 GitLab 登录页会被持续扫描爆破。也不要开放 GitLab 内置 PostgreSQL、Redis、Gitaly 等内部端口。
+
+家用宽带是动态 IP 时，IP 变化后需要回控制台更新来源；不要因为嫌麻烦就改成全网放通。
 
 ### 1.3 腾讯云安全组
 
@@ -258,47 +294,149 @@ docker info
 
 成功标志：能看到 Docker Server 版本和 Compose v2 版本。
 
-## 3. 京东云安装 GitLab CE 与 HTTPS Registry
+## 3. 京东云安装 GitLab CE、私有 CA 与 HTTPS Registry
 
-本章只在 `117.72.220.94` 操作。
+本章 3.1–3.5 在 `117.72.220.94` 操作，3.6 在 `119.29.120.205` 操作，3.7 在本地电脑操作。
 
-### 3.1 设置主机名并安装 GitLab
+顺序不能颠倒：先生成证书，再让 GitLab 带着证书首次 `reconfigure`，否则 GitLab 会以缺省自签证书启动，后面还要重做一遍。
+
+### 3.1 生成私有 CA 与 IP 证书
+
+先建目录并生成 CA。CA 私钥是这套信任体系的根，只留在京东云本机 `600` 权限，不复制、不进 Git、不进镜像：
 
 ```bash
-sudo hostnamectl set-hostname gitlab.ztmdcg.cn
+sudo install -d -m 755 /etc/gitlab/ssl
+sudo install -d -m 700 /etc/gitlab/ssl/ca-private
+cd /etc/gitlab/ssl
+
+sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout /etc/gitlab/ssl/ca-private/ztmdcg-ca.key \
+  -out /etc/gitlab/ssl/ztmdcg-ca.crt \
+  -subj "/C=CN/O=ztmdcg/CN=ztmdcg internal CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
+
+sudo chmod 600 /etc/gitlab/ssl/ca-private/ztmdcg-ca.key
+sudo chmod 644 /etc/gitlab/ssl/ztmdcg-ca.crt
+```
+
+再生成服务器证书。**`subjectAltName` 里必须写 `IP:117.72.220.94`**：Docker、Go、浏览器和 OpenSSL 3 都只看 SAN，把 IP 只写在 `CN` 里会得到 `x509: cannot validate certificate ... doesn't contain any IP SANs`：
+
+```bash
+sudo tee /etc/gitlab/ssl/gitlab-ip.ext >/dev/null <<'EOF'
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = IP:117.72.220.94, IP:127.0.0.1
+EOF
+
+sudo openssl req -newkey rsa:2048 -sha256 -nodes \
+  -keyout /etc/gitlab/ssl/gitlab-ip.key \
+  -out /etc/gitlab/ssl/gitlab-ip.csr \
+  -subj "/C=CN/O=ztmdcg/CN=117.72.220.94"
+
+sudo openssl x509 -req -sha256 -days 825 \
+  -in /etc/gitlab/ssl/gitlab-ip.csr \
+  -CA /etc/gitlab/ssl/ztmdcg-ca.crt \
+  -CAkey /etc/gitlab/ssl/ca-private/ztmdcg-ca.key \
+  -CAcreateserial \
+  -extfile /etc/gitlab/ssl/gitlab-ip.ext \
+  -out /etc/gitlab/ssl/gitlab-ip.crt
+
+sudo chmod 600 /etc/gitlab/ssl/gitlab-ip.key
+sudo chmod 644 /etc/gitlab/ssl/gitlab-ip.crt
+sudo rm -f /etc/gitlab/ssl/gitlab-ip.csr
+```
+
+`IP:127.0.0.1` 是为了让京东云本机的构建 Runner 与健康检查能用 `https://127.0.0.1` 访问自己，不依赖云平台是否支持访问自身公网 IP。
+
+验证证书链与 SAN：
+
+```bash
+sudo openssl verify -CAfile /etc/gitlab/ssl/ztmdcg-ca.crt /etc/gitlab/ssl/gitlab-ip.crt
+sudo openssl x509 -in /etc/gitlab/ssl/gitlab-ip.crt -noout -dates \
+  -ext subjectAltName
+```
+
+成功标志：输出 `gitlab-ip.crt: OK`，SAN 段同时包含 `IP Address:117.72.220.94` 与 `IP Address:127.0.0.1`，`notAfter` 是 825 天后。
+
+叶证书 825 天到期，CA 10 年到期。**把叶证书到期日记进日历**：过期后所有 Pipeline 会同时报 `x509: certificate has expired`。续期方法见 3.6。
+
+### 3.2 让 GitLab 自身信任这张 CA
+
+GitLab omnibus 有独立的信任目录，`gitlab-rake gitlab:check` 与内部组件从这里读 CA：
+
+```bash
+sudo install -d -m 755 /etc/gitlab/trusted-certs
+sudo install -m 644 /etc/gitlab/ssl/ztmdcg-ca.crt /etc/gitlab/trusted-certs/ztmdcg-ca.crt
+```
+
+同时写入系统信任库，供本机 `git`、`curl` 和 `gitlab-runner` 使用：
+
+```bash
+sudo install -m 644 /etc/gitlab/ssl/ztmdcg-ca.crt \
+  /usr/local/share/ca-certificates/ztmdcg-ca.crt
+sudo update-ca-certificates
+```
+
+成功标志：`update-ca-certificates` 输出 `1 added`。
+
+### 3.3 安装 GitLab 并配置 `/etc/gitlab/gitlab.rb`
+
+主机名用普通短名，不要再设成 `gitlab.ztmdcg.cn`，避免以后误以为域名可用：
+
+```bash
+sudo hostnamectl set-hostname ztmdcg-gitlab
 sudo apt-get update
 sudo apt-get install -y curl openssh-server ca-certificates tzdata perl postfix
 curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | sudo bash
-sudo EXTERNAL_URL="https://gitlab.ztmdcg.cn" apt-get install -y gitlab-ce
 ```
 
-若安装阶段证书尚未生成，先确认 DNS 与 80/443 安全组，再执行下一节统一配置。
-
-### 3.2 配置 `/etc/gitlab/gitlab.rb`
-
-先备份：
+**装包前必须先关掉自动 `reconfigure`。** 这一步不是可选优化：deb 的安装后脚本默认立刻跑一次 `gitlab-ctl reconfigure`，而那时 `gitlab.rb` 里还没有 `letsencrypt['enable'] = false`，omnibus 见到 `external_url` 是 `https` 就会去申请证书，直接撞上未备案拦截的 `403` 并让 `dpkg` 留下半配置状态。3.1 章已经生成证书也挡不住这一步，因为此刻还没有任何配置项告诉 GitLab 用它。
 
 ```bash
+sudo install -d -m 755 /etc/gitlab
+sudo touch /etc/gitlab/skip-auto-reconfigure
+sudo apt-get install -y gitlab-ce
+```
+
+**不要用 `EXTERNAL_URL="..." apt-get install` 的写法。** 该环境变量只在 `/etc/gitlab/gitlab.rb` 尚不存在时生效；一旦文件已存在（例如之前装过一次），它会被静默忽略，你以为改成了 IP，实际仍在用文件里的旧域名。本手册一律在 `gitlab.rb` 里显式写 `external_url`，不依赖这个变量。
+
+装完包后 `gitlab.rb` 可能还没生成，缺失时从模板补一份，再备份编辑：
+
+```bash
+sudo test -f /etc/gitlab/gitlab.rb || sudo cp /opt/gitlab/etc/gitlab.rb.template /etc/gitlab/gitlab.rb
+sudo chmod 600 /etc/gitlab/gitlab.rb
 sudo cp /etc/gitlab/gitlab.rb /etc/gitlab/gitlab.rb.before-ztmdcg
 sudoedit /etc/gitlab/gitlab.rb
 ```
 
-确认或追加以下配置，把邮箱替换为真实地址：
+确认或追加以下配置：
 
 ```ruby
-external_url 'https://gitlab.ztmdcg.cn'
-registry_external_url 'https://registry.ztmdcg.cn'
+external_url 'https://117.72.220.94'
+registry_external_url 'https://117.72.220.94:5050'
 
 gitlab_rails['gitlab_signup_enabled'] = false
 gitlab_rails['backup_keep_time'] = 604800
 
-nginx['redirect_http_to_https'] = true
-registry_nginx['redirect_http_to_https'] = true
+# 未备案实例：彻底关闭 Let's Encrypt，否则每次 reconfigure 都会
+# 因 HTTP-01 被拦截页面截走而失败，并阻塞整个 reconfigure
+letsencrypt['enable'] = false
 
-letsencrypt['enable'] = true
-letsencrypt['contact_emails'] = ['<YOUR_EMAIL>']
-letsencrypt['auto_renew'] = true
-letsencrypt['alt_names'] = ['registry.ztmdcg.cn']
+# 私有 CA 签发的 IP 证书，GitLab Web 与 Registry 复用同一张
+nginx['ssl_certificate'] = '/etc/gitlab/ssl/gitlab-ip.crt'
+nginx['ssl_certificate_key'] = '/etc/gitlab/ssl/gitlab-ip.key'
+registry_nginx['ssl_certificate'] = '/etc/gitlab/ssl/gitlab-ip.crt'
+registry_nginx['ssl_certificate_key'] = '/etc/gitlab/ssl/gitlab-ip.key'
+
+# 80 端口在备案通过前会被拦截，不监听、不跳转
+nginx['listen_port'] = 443
+nginx['listen_https'] = true
+nginx['redirect_http_to_https'] = false
+registry_nginx['listen_port'] = 5050
+registry_nginx['listen_https'] = true
+registry_nginx['redirect_http_to_https'] = false
 
 # 4C8G 节省内存
 puma['worker_processes'] = 0
@@ -306,33 +444,230 @@ sidekiq['concurrency'] = 5
 prometheus_monitoring['enable'] = false
 ```
 
-应用配置：
+`letsencrypt['enable'] = false` 是本次修订最关键的一行；漏掉它会重现开头那个 `403` 报错，并且 `reconfigure` 会中断在证书阶段。
+
+从模板生成的 `gitlab.rb` 自带一行注释掉的 `external_url`，若你是追加而不是替换，很容易留下两行。omnibus 取最后一行生效，务必先自查：
+
+```bash
+sudo grep -cE "^external_url" /etc/gitlab/gitlab.rb            # 必须输出 1
+sudo grep -nE "^registry_external_url" /etc/gitlab/gitlab.rb   # 必须只有 5050 那行
+sudo grep -nE "^letsencrypt\['enable'\]" /etc/gitlab/gitlab.rb # 必须只有 false 那行
+```
+
+三条都符合预期后再应用配置。`reconfigure` 成功后才能删掉 `skip-auto-reconfigure`，否则后续 `apt upgrade` 又会在你改配置之前自动跑一次：
 
 ```bash
 sudo gitlab-ctl reconfigure
+sudo rm -f /etc/gitlab/skip-auto-reconfigure
 sudo gitlab-ctl status
 sudo gitlab-rake gitlab:check SANITIZE=true
-curl -I https://gitlab.ztmdcg.cn/users/sign_in
-curl -I https://registry.ztmdcg.cn/v2/
 ```
 
-Registry 返回 `401 Unauthorized` 是正常成功标志，表示 HTTPS 可达但需要登录。
+### 3.4 已经用域名装过一次 GitLab 的补救
 
-证书异常时先检查：
+如果在读到本次修订前，你已经执行过 `EXTERNAL_URL="https://gitlab.ztmdcg.cn" apt-get install -y gitlab-ce`，会看到安装以这段报错结束：
+
+```text
+letsencrypt_certificate[gitlab.ztmdcg.cn] ... had an error: RuntimeError:
+[gitlab.ztmdcg.cn] Validation failed, unable to request certificate,
+Errors: [... "detail"=>"117.72.220.94: Invalid response from
+http://gitlab.ztmdcg.cn/.well-known/acme-challenge/...: 403" ...]
+dpkg: error processing package gitlab-ce (--configure)
+```
+
+**不需要卸载重装。** GitLab 本体已经装好（日志里 `541 resources updated`，root 初始密码也已写入 `/etc/gitlab/initial_root_password`），只有证书那一步失败，导致 `dpkg` 停在半配置状态。
+
+> **本节自成一套，按这里的命令走完即可。** 不要回到 3.3 重跑装包命令：`gitlab-ce` 已经装上了，再执行 `apt-get install` 只会让 `apt` 去收拾那个半配置的包，在你改好配置之前又失败一次，而且报错信息还会变样，更难判断。
+
+先确认当前配置里到底写的是什么：
 
 ```bash
-sudo gitlab-ctl renew-le-certs
-sudo gitlab-ctl tail nginx
-sudo ls -l /etc/gitlab/ssl
+sudo grep -nE "^external_url|^registry_external_url|^letsencrypt" /etc/gitlab/gitlab.rb
 ```
 
-### 3.3 首次登录与安全设置
+看到 `external_url 'https://gitlab.ztmdcg.cn'` 即可确诊。
+
+**第 1 步**，挡住 `apt` 的自动 `reconfigure`，避免后续任何 `apt` 操作反复触发失败：
+
+```bash
+sudo touch /etc/gitlab/skip-auto-reconfigure
+```
+
+**第 2 步**，执行 3.1、3.2 生成并信任私有 CA 与 IP 证书（此前跳过了这两节）。完成后确认产物齐全，输出必须是 `gitlab-ip.crt: OK`，否则不要往下走：
+
+```bash
+ls -l /etc/gitlab/ssl/
+sudo openssl verify -CAfile /etc/gitlab/ssl/ztmdcg-ca.crt /etc/gitlab/ssl/gitlab-ip.crt
+```
+
+**第 3 步**，备份并编辑配置。把已有的 `external_url` 那行**改写**成 IP，不要新增一行，其余按 3.3 的 ruby 配置块补齐：
+
+```bash
+sudo cp /etc/gitlab/gitlab.rb /etc/gitlab/gitlab.rb.before-ztmdcg
+sudoedit /etc/gitlab/gitlab.rb
+```
+
+**第 4 步**，用 3.3 末尾的三条 `grep` 自查，确认没有残留的域名行和 `letsencrypt['enable'] = true`。
+
+**第 5 步**，重新配置并修复 dpkg：
+
+```bash
+sudo gitlab-ctl reconfigure
+sudo dpkg --configure -a
+sudo rm -f /etc/gitlab/skip-auto-reconfigure
+sudo gitlab-ctl status
+```
+
+`dpkg --configure -a` 会重跑安装后脚本收尾。此时 `gitlab.rb` 已指向 IP、Let's Encrypt 已关闭，不会再触发证书申请。
+
+成功标志：`reconfigure` 跑满几分钟且结尾没有 `letsencrypt` 相关报错，`dpkg --configure -a` 正常结束，`gitlab-ctl status` 中各组件为 `run`。随后继续 3.5 的本机验证。
+
+初始密码文件的 24 小时清理倒计时从**首次安装**就开始了，尽快登录改密；若文件已消失，用 `sudo gitlab-rake "gitlab:password:reset[root]"` 重置。
+
+#### 中途改过主机名
+
+若在补救过程中执行过 `hostnamectl set-hostname`，`apt` 或 `dpkg` 可能改报：
+
+```text
+It looks like there was a problem with public attributes; run gitlab-ctl reconfigure manually to fix.
+```
+
+omnibus 把上一次 `reconfigure` 的节点属性缓存成**以主机名命名**的 JSON，改名后按新名字找不到文件。确认：
+
+```bash
+ls -l /opt/gitlab/embedded/nodes/
+hostname -f
+```
+
+文件名仍是旧主机名即可确诊。这个状态无害，上面第 5 步的 `reconfigure` 会按新主机名重新生成；**但它不能替代第 3 步**——配置没改就直接 `reconfigure`，仍会死在 Let's Encrypt 上。
+
+### 3.5 京东云本机验证 HTTPS 与 Registry
+
+```bash
+curl --cacert /etc/gitlab/ssl/ztmdcg-ca.crt -I https://127.0.0.1/users/sign_in
+curl --cacert /etc/gitlab/ssl/ztmdcg-ca.crt -I https://127.0.0.1:5050/v2/
+sudo ss -lntp | grep -E ':(443|5050)\s'
+```
+
+成功标志：
+
+- GitLab 登录页返回 `200` 或 `302`。
+- Registry `/v2/` 返回 `401 Unauthorized`——这表示 HTTPS 与鉴权链路正常，不是错误。
+- `443` 与 `5050` 都由 `nginx` 监听；`80` 没有监听进程。
+
+再确认本机能否访问自身公网 IP（部分云平台不支持这种回环，构建 Runner 推镜像依赖它）：
+
+```bash
+curl --cacert /etc/gitlab/ssl/ztmdcg-ca.crt -sS -o /dev/null \
+  -w 'public-ip reachable: %{http_code}\n' https://117.72.220.94:5050/v2/
+```
+
+成功标志：输出 `public-ip reachable: 401`。
+
+若超时或连接被拒，说明京东云不支持访问自身公网 IP，补一条 NAT 规则把本机与容器发往公网 IP 的流量折回内网地址：
+
+```bash
+PRIVATE_IP="$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+echo "private ip: $PRIVATE_IP"
+sudo iptables -t nat -A OUTPUT -d 117.72.220.94 -j DNAT --to-destination "$PRIVATE_IP"
+sudo iptables -t nat -A PREROUTING -d 117.72.220.94 -j DNAT --to-destination "$PRIVATE_IP"
+sudo apt-get install -y iptables-persistent
+sudo netfilter-persistent save
+```
+
+`OUTPUT` 规则覆盖本机进程，`PREROUTING` 覆盖 Docker 容器里的构建流量，两条都要有。加完重跑上面的 `curl` 确认返回 `401`。
+
+### 3.6 证书续期
+
+叶证书 825 天后过期，CA 私钥仍在 `/etc/gitlab/ssl/ca-private/`，续期只需重签叶证书，**CA 不动，所有客户端不需要重新分发**：
+
+```bash
+sudo openssl req -newkey rsa:2048 -sha256 -nodes \
+  -keyout /etc/gitlab/ssl/gitlab-ip.key.new \
+  -out /etc/gitlab/ssl/gitlab-ip.csr \
+  -subj "/C=CN/O=ztmdcg/CN=117.72.220.94"
+
+sudo openssl x509 -req -sha256 -days 825 \
+  -in /etc/gitlab/ssl/gitlab-ip.csr \
+  -CA /etc/gitlab/ssl/ztmdcg-ca.crt \
+  -CAkey /etc/gitlab/ssl/ca-private/ztmdcg-ca.key \
+  -CAcreateserial \
+  -extfile /etc/gitlab/ssl/gitlab-ip.ext \
+  -out /etc/gitlab/ssl/gitlab-ip.crt.new
+
+sudo openssl verify -CAfile /etc/gitlab/ssl/ztmdcg-ca.crt /etc/gitlab/ssl/gitlab-ip.crt.new
+```
+
+`verify` 通过后再替换并重载，失败时旧证书仍然有效：
+
+```bash
+sudo mv /etc/gitlab/ssl/gitlab-ip.key.new /etc/gitlab/ssl/gitlab-ip.key
+sudo mv /etc/gitlab/ssl/gitlab-ip.crt.new /etc/gitlab/ssl/gitlab-ip.crt
+sudo chmod 600 /etc/gitlab/ssl/gitlab-ip.key
+sudo chmod 644 /etc/gitlab/ssl/gitlab-ip.crt
+sudo rm -f /etc/gitlab/ssl/gitlab-ip.csr
+sudo gitlab-ctl restart nginx
+sudo gitlab-ctl restart registry
+```
+
+CA 本身到期（10 年）时才需要重做 3.1 并重新执行 3.7、3.8 的分发。
+
+### 3.7 把 CA 分发到腾讯云
+
+在 **本地电脑** PowerShell 把 CA 公钥从京东云取到腾讯云。CA 公钥不是机密，但要确认内容没被截断：
+
+```powershell
+scp root@117.72.220.94:/etc/gitlab/ssl/ztmdcg-ca.crt "$env:TEMP\ztmdcg-ca.crt"
+scp "$env:TEMP\ztmdcg-ca.crt" root@119.29.120.205:/tmp/ztmdcg-ca.crt
+```
+
+在 **腾讯云** 安装到两个位置。系统信任库供 `git`、`curl` 和 `gitlab-runner` 使用；`certs.d` 供 Docker 拉镜像使用，目录名必须与镜像地址里的 `主机:端口` 完全一致：
+
+```bash
+sudo install -m 644 /tmp/ztmdcg-ca.crt /usr/local/share/ca-certificates/ztmdcg-ca.crt
+sudo update-ca-certificates
+
+sudo install -d -m 755 '/etc/docker/certs.d/117.72.220.94:5050'
+sudo install -m 644 /tmp/ztmdcg-ca.crt '/etc/docker/certs.d/117.72.220.94:5050/ca.crt'
+rm -f /tmp/ztmdcg-ca.crt
+```
+
+验证（本步骤要求京东云安全组已放通 `119.29.120.205`）：
+
+```bash
+curl -sS -o /dev/null -w 'gitlab: %{http_code}\n' https://117.72.220.94/users/sign_in
+curl -sS -o /dev/null -w 'registry: %{http_code}\n' https://117.72.220.94:5050/v2/
+```
+
+成功标志：分别返回 `gitlab: 200`（或 `302`）与 `registry: 401`，并且**没有加 `--cacert` 也没有报证书错误**——说明系统信任库已生效。若出现 `SSL certificate problem: unable to get local issuer certificate`，回到 `update-ca-certificates` 检查；不要改用 `curl -k`。
+
+上面两条 `curl` 只验证了系统信任库。`certs.d` 要等 Registry 里真的有镜像才能验证，第 9 章第一次 `docker pull` 会自然覆盖到；那一步若报 `x509`，就回来检查目录名是否精确等于 `117.72.220.94:5050`。Docker 读取 `certs.d` 不需要重启 daemon。
+
+### 3.8 开发人员本地电脑的信任设置
+
+推送代码走 SSH（第 8 章），**不需要**任何证书配置。只有浏览器访问 GitLab 和用 HTTPS 克隆时才需要信任 CA。
+
+浏览器：把 `ztmdcg-ca.crt` 导入「受信任的根证书颁发机构」。Windows 上双击证书文件 → 安装证书 → 本地计算机 → 受信任的根证书颁发机构。导入后访问 `https://117.72.220.94` 不再有安全警告。
+
+不想导入的话，直接在警告页点「继续前往」也能用，但每次都要点，且 Chrome 不会保存 IP 证书的例外。
+
+如果确实需要 HTTPS 克隆：
+
+```powershell
+git config --global http."https://117.72.220.94/".sslCAInfo "$env:USERPROFILE\.ssh\ztmdcg-ca.crt"
+```
+
+把 CA 文件先放到该路径。**不要**用 `git config --global http.sslVerify false`——那会对所有仓库关闭校验，包括 GitHub。
+
+备案通过切回域名后，在这里删除导入的根证书和上面这条 `git config`。
+
+### 3.9 首次登录与安全设置
 
 ```bash
 sudo cat /etc/gitlab/initial_root_password
 ```
 
-浏览器打开 `https://gitlab.ztmdcg.cn`，使用 `root` 登录并立即：
+浏览器打开 `https://117.72.220.94`，使用 `root` 登录并立即：
 
 1. 修改 root 密码。
 2. 添加管理员 SSH Key。
@@ -341,7 +676,9 @@ sudo cat /etc/gitlab/initial_root_password
 
 初始密码文件约 24 小时后自动删除。
 
-### 3.4 创建 Group 与两个私有项目
+未导入 CA 时浏览器会显示证书警告，证书详情里的颁发者应为 `ztmdcg internal CA`。**如果颁发者是别的名字，立即停止并排查中间人风险**，不要点继续。
+
+### 3.10 创建 Group 与两个私有项目
 
 在 GitLab 页面创建私有 Group：`ztmdcg`，再创建两个空项目：
 
@@ -351,6 +688,13 @@ sudo cat /etc/gitlab/initial_root_password
 创建时不要初始化 README，避免第一次 push 产生无关历史。首次 push 完成后，将 `main` 设置为默认分支并保护：允许 Maintainer push/merge，禁止普通 Developer 直接推生产分支。
 
 两个项目都进入：`Settings → Packages and registries → Container Registry`，启用清理策略，至少保留最近 5 个镜像标签；镜像标签是提交 SHA，不依赖 `latest`。
+
+此时两个项目的镜像地址分别是：
+
+- `117.72.220.94:5050/ztmdcg/llm-gateway/gateway`、`.../ui`
+- `117.72.220.94:5050/ztmdcg/soft-training/backend`、`.../frontend`
+
+CI 中由 `$CI_REGISTRY_IMAGE` 自动生成，不需要手写；本文只在 `.env.example` 里出现示例值。
 
 ## 4. 安装与注册 GitLab Runner
 
@@ -374,16 +718,26 @@ gitlab-runner --version
 - Protected：关闭，使普通分支也能运行测试
 - 最大超时：建议 60 分钟
 
+先把 CA 放到 Runner 的证书目录，注册时显式指定，Runner 才能克隆代码和上传产物：
+
+```bash
+sudo install -d -m 755 /etc/gitlab-runner/certs
+sudo install -m 644 /etc/gitlab/ssl/ztmdcg-ca.crt /etc/gitlab-runner/certs/ztmdcg-ca.crt
+```
+
 复制一次性显示的 `glrt-...` 认证令牌，在京东云执行：
 
 ```bash
 sudo gitlab-runner register --non-interactive \
-  --url "https://gitlab.ztmdcg.cn" \
+  --url "https://117.72.220.94" \
   --token "<JD_BUILD_RUNNER_TOKEN>" \
+  --tls-ca-file "/etc/gitlab-runner/certs/ztmdcg-ca.crt" \
   --executor "docker" \
   --docker-image "alpine:3.21" \
   --description "jd-build-runner"
 ```
+
+漏掉 `--tls-ca-file` 会让每个 Job 在 `git clone` 阶段就报 `x509: certificate signed by unknown authority`。Runner 会把这个 CA 自动传递给 Job 容器用于克隆和 artifacts，但**不会**传给 dind 服务容器，镜像推送另需下一节处理。
 
 编辑 `/etc/gitlab-runner/config.toml`：
 
@@ -397,13 +751,34 @@ concurrent = 1
     volumes = ["/cache"]
 ```
 
-不要删除注册命令生成的 `url`、`token` 等其他字段。然后：
+不要删除注册命令生成的 `url`、`token`、`tls-ca-file` 等其他字段。然后：
 
 ```bash
 sudo gitlab-runner verify
 sudo systemctl restart gitlab-runner
 sudo journalctl -u gitlab-runner -n 100 --no-pager
 ```
+
+成功标志：`verify` 退出码为 0，日志中没有 `x509` 或 `certificate` 相关错误。
+
+### 4.2.1 dind 与私有 CA Registry
+
+构建 Job 在 `docker:27-dind` 服务容器里 `docker push`。dind 的 Docker daemon 不读宿主机的 `/etc/docker/certs.d`，也拿不到 Runner 的 CA；而 Docker 卷挂载语法用冒号分隔，无法把宿主目录挂到 `/etc/docker/certs.d/117.72.220.94:5050/` 这种带端口的路径上。
+
+因此两个仓库的 `.gitlab-ci.yml` 都给 dind 加了一行参数（已随本次修订写入仓库，无需手改）：
+
+```yaml
+    - name: docker:27-dind
+      alias: docker
+      command:
+        - --insecure-registry=117.72.220.94:5050
+        - --registry-mirror=https://docker.m.daocloud.io
+        - --registry-mirror=https://docker.1ms.run
+```
+
+需要理解这个取舍的边界：`--insecure-registry` 让 dind **跳过证书校验**，但连接仍是 TLS，不会退回明文；且这一跳发生在京东云同一台机器内部（dind → 本机 Registry），不穿越公网。真正跨机的那一跳是京东云 → 腾讯云拉镜像，那一跳由 3.7 章的 `certs.d` 做**完整证书校验**，没有放宽。
+
+不要因为图省事就在腾讯云的 `/etc/docker/daemon.json` 里也加 `insecure-registries`——那会让公网跨机传输失去校验，是本方案里唯一不能妥协的地方。
 
 ### 4.3 腾讯云注册部署 Runner
 
@@ -415,12 +790,17 @@ sudo journalctl -u gitlab-runner -n 100 --no-pager
 - Protected：开启
 - Scope：只属于 `ztmdcg` Group；若界面显示 “Lock to current projects”，将其锁定到 `llm-gateway` 与 `soft-training`，不要注册成全实例共享 Runner
 
-在腾讯云执行：
+在腾讯云执行。这里必须先完成 3.7 章的 CA 安装，否则注册就会失败：
 
 ```bash
+sudo install -d -m 755 /etc/gitlab-runner/certs
+sudo install -m 644 /usr/local/share/ca-certificates/ztmdcg-ca.crt \
+  /etc/gitlab-runner/certs/ztmdcg-ca.crt
+
 sudo gitlab-runner register --non-interactive \
-  --url "https://gitlab.ztmdcg.cn" \
+  --url "https://117.72.220.94" \
   --token "<TENCENT_DEPLOY_RUNNER_TOKEN>" \
+  --tls-ca-file "/etc/gitlab-runner/certs/ztmdcg-ca.crt" \
   --executor "shell" \
   --description "tencent-production-runner"
 
@@ -429,6 +809,15 @@ sudo systemctl restart gitlab-runner
 sudo -u gitlab-runner -H docker version
 sudo -u gitlab-runner -H docker compose version
 ```
+
+确认部署 Runner 能以 `gitlab-runner` 身份登录 Registry 并完成证书校验：
+
+```bash
+sudo -u gitlab-runner -H curl -sS -o /dev/null \
+  -w 'registry from runner: %{http_code}\n' https://117.72.220.94:5050/v2/
+```
+
+成功标志：输出 `registry from runner: 401`，没有任何 TLS 报错。
 
 确认 `/etc/gitlab-runner/config.toml` 顶层为 `concurrent = 1`，然后执行：
 
@@ -638,6 +1027,8 @@ sudo certbot renew --dry-run
 
 ### 8.1 配置 SSH Key
 
+推送统一走 SSH。SSH 不依赖 HTTPS 证书，因此不用在本地电脑做任何 CA 配置。
+
 本地没有 SSH Key 时：
 
 ```powershell
@@ -647,17 +1038,36 @@ Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
 
 把公钥添加到 GitLab：`Preferences → SSH Keys`。
 
+首次连接会提示确认主机指纹。**先在京东云读出真实指纹再比对**，不要盲目输 `yes`：
+
+```bash
+# 京东云执行
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+```powershell
+# 本地电脑执行，比对上一步输出的指纹
+ssh -T git@117.72.220.94
+```
+
+成功标志：指纹一致，且返回 `Welcome to GitLab, @<你的用户名>!`。
+
 ### 8.2 添加远程并推送
 
 ```powershell
-git -C "C:\practice\llm-gateway-project" remote add gitlab git@gitlab.ztmdcg.cn:ztmdcg/llm-gateway.git
-git -C "C:\practice\软项智训" remote add gitlab git@gitlab.ztmdcg.cn:ztmdcg/soft-training.git
+git -C "C:\practice\llm-gateway-project" remote add gitlab git@117.72.220.94:ztmdcg/llm-gateway.git
+git -C "C:\practice\软项智训" remote add gitlab git@117.72.220.94:ztmdcg/soft-training.git
 
 git -C "C:\practice\llm-gateway-project" remote -v
 git -C "C:\practice\软项智训" remote -v
 ```
 
-如果已经存在名为 `gitlab` 的 remote，使用 `git remote set-url`，不要重复添加。
+如果已经存在名为 `gitlab` 的 remote（例如之前指向 `gitlab.ztmdcg.cn`），用 `set-url` 改掉，不要重复添加：
+
+```powershell
+git -C "C:\practice\llm-gateway-project" remote set-url gitlab git@117.72.220.94:ztmdcg/llm-gateway.git
+git -C "C:\practice\软项智训" remote set-url gitlab git@117.72.220.94:ztmdcg/soft-training.git
+```
 
 将你确认好的分支推为远程 `main`：
 
@@ -969,17 +1379,34 @@ GitLab 备份与业务备份分开保存。
 
 ### 14.1 域名与 HTTPS
 
+对外域名（腾讯云，已备案）：
+
 ```bash
 curl -I http://ztmdcg.cn
 curl -I https://ztmdcg.cn
 curl -I https://gateway.ztmdcg.cn
-curl -I https://gitlab.ztmdcg.cn
-curl -I https://registry.ztmdcg.cn/v2/
 ```
 
 - HTTP 返回 301 到 HTTPS。
-- 三个页面证书可信。
-- Registry `/v2/` 返回 401，而非超时或证书错误。
+- 两个站点证书由 Let's Encrypt 签发且可信。
+
+内部设施（京东云，IP + 私有 CA）。在**腾讯云**执行，验证系统信任库生效：
+
+```bash
+curl -sS -o /dev/null -w 'gitlab: %{http_code}\n' https://117.72.220.94/users/sign_in
+curl -sS -o /dev/null -w 'registry: %{http_code}\n' https://117.72.220.94:5050/v2/
+```
+
+- GitLab 返回 `200` 或 `302`，Registry `/v2/` 返回 `401`。
+- 两条命令都没有 `--cacert`、没有 `-k`，也没有证书报错。
+- 证书颁发者确认为自建 CA：
+
+```bash
+echo | openssl s_client -connect 117.72.220.94:5050 2>/dev/null \
+  | openssl x509 -noout -issuer -subject -dates -ext subjectAltName
+```
+
+成功标志：`issuer` 含 `CN = ztmdcg internal CA`，SAN 含 `IP Address:117.72.220.94`，`notAfter` 未过期。
 
 ### 14.2 Gateway API
 
@@ -1056,9 +1483,18 @@ $grade.data
 
 | 现象 | 优先检查 | 处理 |
 |---|---|---|
+| 证书签发返回 `403` | 是否还在对京东云跑 certbot / Let's Encrypt | 未备案实例拿不到证书，改用第 3 章 IP + 私有 CA；确认 `letsencrypt['enable'] = false` |
+| 装包时 `reconfigure` 失败、`dpkg` 报 `gitlab-ce` 配置错误 | `gitlab.rb` 里的 `external_url` 是否仍为域名 | 按 3.4 补救：不用重装，改配置后 `reconfigure` 再 `dpkg --configure -a` |
+| 改了 `EXTERNAL_URL=` 却没生效 | `/etc/gitlab/gitlab.rb` 是否已存在 | 该变量只在文件不存在时生效；直接编辑 `gitlab.rb` 里的 `external_url` |
+| `problem with public attributes` | 是否刚改过主机名、`/opt/gitlab/embedded/nodes/` 里的文件名 | 改配置后跑 `gitlab-ctl reconfigure` 会按新主机名重建；不要先跑 reconfigure 再改配置 |
+| `x509: certificate signed by unknown authority` | 该客户端是否装了 CA | 腾讯云补 3.6，Runner 补 `--tls-ca-file`，dind 见 4.2.1；不要用 `-k` 绕过 |
+| `doesn't contain any IP SANs` | 叶证书 SAN | 证书只写了 CN，按 3.1 用 `gitlab-ip.ext` 重签 |
+| `certificate has expired` | 叶证书 825 天有效期 | 按 3.6 重签叶证书并重启 nginx/registry，CA 不动 |
+| 京东云 GitLab 打不开 | 安全组 `443`、来源 IP 是否变化 | 家宽换 IP 后回控制台更新来源；不要放开 `0.0.0.0/0` |
+| `docker push` 连不上 Registry | 本机能否访问自身公网 IP | 按 3.5 的 `curl` 判断，必要时加 NAT 折回规则 |
 | 域名超时 | DNS、安全组、`ss -lntp` | 先修网络，不要反复重装服务 |
 | GitLab 502 | `gitlab-ctl status`、内存、swap | `gitlab-ctl tail`，确认 Puma/Sidekiq 未 OOM |
-| Registry 登录失败 | `/v2/`、证书、项目 Registry 开关 | 确认 `registry.ztmdcg.cn` HTTPS 与清理策略 |
+| Registry 登录失败 | `/v2/`、证书、项目 Registry 开关 | 确认 `117.72.220.94:5050` HTTPS 与清理策略 |
 | Runner pending | Runner 在线状态、tag、Protected | 构建 Job 应由 untagged Runner 接，部署 Job 要 `ztmdcg-production` |
 | Docker 构建失败 | DIND、镜像源、磁盘 | 查 Job 日志和 `docker system df` |
 | 部署提示密钥文件缺失 | `/opt/ztmdcg/secrets/*.env` | 按提示补文件并设置 `640 root:gitlab-runner` |
@@ -1088,6 +1524,11 @@ docker compose stop
 同时遵守：
 
 - 不把真实 `.env`、令牌、密码、私钥提交到 Git。
+- 不把 CA 私钥 `/etc/gitlab/ssl/ca-private/ztmdcg-ca.key` 复制出京东云；它能签发任意站点的可信证书。
+- 不在腾讯云 `daemon.json` 里配置 `insecure-registries`；跨机拉镜像必须完整校验证书。
+- 不用 `curl -k`、`git config http.sslVerify false` 或 `docker --tls-verify=false` 绕过证书问题，应补齐 CA。
+- 不把京东云 `443`、`5050` 放开到 `0.0.0.0/0`。
+- 不在备案通过前重试对 `gitlab.ztmdcg.cn` 的证书签发。
 - 不把 MySQL、Redis、MinIO、Qdrant、Nacos、Sentinel 直接暴露公网。
 - 不在部署服务器编译源码；服务器只拉 Registry 镜像。
 - 不直接编辑服务器 Compose 后忘记回写仓库。
@@ -1097,15 +1538,17 @@ docker compose stop
 ## 17. 首次部署顺序摘要
 
 1. 重装两台 Ubuntu 22.04。
-2. 配置 DNS、安全组、时区、4GB swap 和 Docker。
-3. 京东云安装 GitLab、HTTPS Registry、构建 Runner。
-4. 腾讯云安装 Nginx、Certbot、部署 Runner，创建目录和密钥。
-5. 腾讯云签发证书并启用外挂 Nginx 配置。
-6. 推送 `llm-gateway`，允许第一次部署在平台启动后因 Nacos 空密钥失败。
-7. 通过 SSH 隧道填写 Nacos，重跑 Gateway 部署。
-8. 在 Gateway 管理台创建软项智训业务 API Key。
-9. 创建含一次性管理员的 `soft-training.env`，推送软项智训；首次改密后关闭 bootstrap 并重跑部署。
-10. 完成域名、登录、非流式/SSE、上传、AI、备份、恢复和回滚验收。
+2. 配置 DNS（只保留 `@`、`www`、`gateway` 三条，删除 `gitlab`/`registry`）、安全组、时区、4GB swap 和 Docker。
+3. 京东云生成私有 CA 与含 `IP:117.72.220.94` 的证书，安装 GitLab（`letsencrypt['enable'] = false`）、`:5050` Registry。
+4. 把 CA 分发到腾讯云系统信任库与 `/etc/docker/certs.d/117.72.220.94:5050/`，开发人员按需导入浏览器。
+5. 注册两个 Runner，都带 `--tls-ca-file`；构建 Job 的 dind 使用 `--insecure-registry=117.72.220.94:5050`。
+6. 腾讯云安装 Nginx、Certbot，创建目录和密钥。
+7. 腾讯云为 `ztmdcg.cn`、`gateway.ztmdcg.cn` 签发 Let's Encrypt 证书并启用外挂 Nginx 配置。
+8. 用 SSH 远程 `git@117.72.220.94` 推送 `llm-gateway`，允许第一次部署在平台启动后因 Nacos 空密钥失败。
+9. 通过 SSH 隧道填写 Nacos，重跑 Gateway 部署。
+10. 在 Gateway 管理台创建软项智训业务 API Key。
+11. 创建含一次性管理员的 `soft-training.env`，推送软项智训；首次改密后关闭 bootstrap 并重跑部署。
+12. 完成域名、证书、登录、非流式/SSE、上传、AI、备份、恢复和回滚验收。
 
 ## 18. 官方参考
 

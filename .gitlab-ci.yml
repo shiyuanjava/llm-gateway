@@ -97,6 +97,11 @@ build_images:
     - name: docker:27-dind
       alias: docker
       command:
+        # 京东云未备案,Registry 用 IP + 私有 CA(见部署手册 3 章)。dind 的 daemon 读不到
+        # 宿主机 /etc/docker/certs.d,且卷挂载语法无法表达带端口的目录名,故跳过校验。
+        # 这一跳是京东云本机内部(dind → 本机 Registry),仍是 TLS;跨机拉取由腾讯云
+        # /etc/docker/certs.d/117.72.220.94:5050/ca.crt 完整校验,那里不放宽。
+        - --insecure-registry=117.72.220.94:5050
         - --registry-mirror=https://docker.m.daocloud.io
         - --registry-mirror=https://docker.1ms.run
   before_script:
