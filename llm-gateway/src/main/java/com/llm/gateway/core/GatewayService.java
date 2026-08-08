@@ -104,7 +104,6 @@ public class GatewayService {
     public ChatCompletionResponse complete(ChatCompletionRequest request, Principal principal) {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
-        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         try {
             // 1. 授权：该租户能否访问目标模型
             apiKeyService.authorize(principal, request.model());
@@ -142,6 +141,10 @@ public class GatewayService {
             metrics.incError(e.code());
             persistError(context, e);
             throw e;
+        } catch (RuntimeException e) {
+            metrics.incError("internal");
+            persistInternal(context);
+            throw e;
         }
     }
 
@@ -159,7 +162,6 @@ public class GatewayService {
         GatewayContext context =
                 new GatewayContext(newRequestId(), principal.tenant(), request.model(), System.nanoTime());
         context.markStreamed();
-        metrics.incInbound(); // 入站总计数:含随后被 401/429/配额拒绝的,作错误率的真实分母
         SseWriter writer = new SseWriter(servletResponse, objectMapper);
         // 可重放契约：首帧前失败会重试/换目标重新调用 invoker，聚合器必须按次尝试重建，
         // 否则重试会把上一次已累计的增量重复计入（见 StreamInvoker javadoc）
@@ -247,11 +249,12 @@ public class GatewayService {
         } catch (RuntimeException e) {
             metrics.incError("internal");
             if (!writer.started()) {
-                throw e; // 交给全局兜底
+                persistInternal(context);
+                throw e;
             }
             log.warn("[gateway] 流式请求内部错误 reqId={}：{}", context.requestId(), e.getMessage(), e);
             tryWriteError(writer, "internal_error", "网关内部错误");
-            persistPartial(request, context, aggregatorRef.get(), "error", "internal");
+            persistPartial(request, context, aggregatorRef.get(), "error", "internal_error");
         }
     }
 
@@ -420,6 +423,30 @@ public class GatewayService {
      * @param context 请求上下文
      * @param e       网关异常
      */
+    /** Best-effort audit record for an unexpected non-domain failure. */
+    private void persistInternal(GatewayContext context) {
+        long now = System.nanoTime();
+        try {
+            requestLogRepository.save(new RequestLogRecord(
+                    context.requestId(),
+                    context.tenant(),
+                    context.requestedModel(),
+                    null,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    false,
+                    "error",
+                    "internal_error",
+                    context.elapsedMillis(now)));
+        } catch (RuntimeException auditFailure) {
+            log.warn("写入 internal 错误审计记录时出错：{}", auditFailure.getMessage());
+        }
+    }
+
     private void persistError(GatewayContext context, GatewayException e) {
         long now = System.nanoTime();
         try {

@@ -20,4 +20,14 @@ public class ObservabilityFilterConfig {
         registration.setName("traceIdFilter");
         return registration;
     }
+
+    @Bean
+    public FilterRegistrationBean<InboundMetricsFilter> inboundMetricsFilter(MetricsRecorder metrics) {
+        FilterRegistrationBean<InboundMetricsFilter> registration =
+                new FilterRegistrationBean<>(new InboundMetricsFilter(metrics));
+        registration.addUrlPatterns("/v1/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
+        registration.setName("inboundMetricsFilter");
+        return registration;
+    }
 }
