@@ -70,6 +70,15 @@ nginx_target="$NGINX_DIR/conf.d/gateway.ztmdcg.cn.conf"
 nginx_backup="$APP_DIR/gateway.ztmdcg.cn.conf.previous"
 had_nginx_config=false
 if [[ -f "$nginx_target" ]]; then
+  # 该文件的生命周期归本脚本:备份 -> 覆盖 -> nginx -t 失败则回滚。若它是 root:root
+  # 640(手册 7.4 早期版本用 `sudo install` 装出来的),这里连读都读不了。裸的
+  # "cp: Permission denied" 看不出该怎么办,所以显式给出修复命令。
+  if [[ ! -r "$nginx_target" ]]; then
+    echo "无法读取 $nginx_target(当前属主 $(stat -c '%U:%G %a' "$nginx_target"))。" >&2
+    echo "该文件应归 gitlab-runner 所有,在腾讯云执行:" >&2
+    echo "  sudo chown gitlab-runner:gitlab-runner $nginx_target" >&2
+    exit 1
+  fi
   cp "$nginx_target" "$nginx_backup"
   had_nginx_config=true
 fi

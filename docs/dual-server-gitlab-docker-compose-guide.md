@@ -1348,10 +1348,18 @@ sudo certbot certificates
 
 ### 7.4 切换最终 Nginx 配置
 
+属主必须是 `gitlab-runner`。这三个文件的生命周期由部署脚本接管：每次发布它都会先备份现有配置、写入仓库里的新版本，`nginx -t` 失败再回滚。装成 `root:root 640` 会让脚本连备份都读不了，发布直接失败：
+
+```text
+cp: cannot open '/opt/ztmdcg/nginx/conf.d/gateway.ztmdcg.cn.conf' for reading: Permission denied
+```
+
+这不会放大权限。`gitlab-runner` 已经持有 `nginx -t` 与 `reload nginx` 的 NOPASSWD 授权，改写自己负责的配置本来就是设计内的能力。Nginx master 以 root 运行，通过 `/etc/nginx/conf.d/` 的软链读取，与文件属主无关。
+
 ```bash
-sudo install -m 640 /tmp/proxy-common.conf /opt/ztmdcg/nginx/snippets/proxy-common.conf
-sudo install -m 640 /tmp/gateway.ztmdcg.cn.conf /opt/ztmdcg/nginx/conf.d/gateway.ztmdcg.cn.conf
-sudo install -m 640 /tmp/ztmdcg.cn.conf /opt/ztmdcg/nginx/conf.d/ztmdcg.cn.conf
+sudo install -o gitlab-runner -g gitlab-runner -m 640 /tmp/proxy-common.conf /opt/ztmdcg/nginx/snippets/proxy-common.conf
+sudo install -o gitlab-runner -g gitlab-runner -m 640 /tmp/gateway.ztmdcg.cn.conf /opt/ztmdcg/nginx/conf.d/gateway.ztmdcg.cn.conf
+sudo install -o gitlab-runner -g gitlab-runner -m 640 /tmp/ztmdcg.cn.conf /opt/ztmdcg/nginx/conf.d/ztmdcg.cn.conf
 
 sudo rm -f /etc/nginx/conf.d/00-acme-bootstrap.conf
 sudo ln -sfn /opt/ztmdcg/nginx/conf.d/gateway.ztmdcg.cn.conf /etc/nginx/conf.d/gateway.ztmdcg.cn.conf
