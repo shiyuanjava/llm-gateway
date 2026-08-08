@@ -148,8 +148,7 @@ final class IpAddressMatcher {
 
     @Override
     public boolean equals(Object other) {
-        return this == other
-                || (other instanceof IpAddressMatcher matcher && expression.equals(matcher.expression));
+        return this == other || (other instanceof IpAddressMatcher matcher && expression.equals(matcher.expression));
     }
 
     @Override

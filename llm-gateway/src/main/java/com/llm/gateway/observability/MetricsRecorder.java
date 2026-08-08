@@ -107,8 +107,7 @@ public class MetricsRecorder {
      * @param provider 被放弃的供应商名
      */
     public void incProviderFallback(String provider) {
-        registry.counter("llm.gateway.provider.fallbacks", "provider", provider)
-                .increment();
+        registry.counter("llm.gateway.provider.fallbacks", "provider", provider).increment();
     }
 
     /**

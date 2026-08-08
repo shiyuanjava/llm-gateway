@@ -43,7 +43,8 @@ public class AsyncRequestLogWriter implements RequestLogRepository {
      */
     public AsyncRequestLogWriter(@Qualifier("requestLogRepositoryImpl") RequestLogRepository delegate) {
         this.delegate = delegate;
-        this.worker = Thread.ofPlatform().name("request-log-writer").daemon(true).start(this::drainLoop);
+        this.worker =
+                Thread.ofPlatform().name("request-log-writer").daemon(true).start(this::drainLoop);
     }
 
     @Override

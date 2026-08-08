@@ -84,11 +84,10 @@ class AdminAuthServiceTest {
         AdminAuthService.LoginResult oldToken = service.login("admin", "secret-pass", "127.0.0.1");
         String newSecret = "rotated-secret-0123456789abcdef0123456789";
         AdminAuthService rotated = new AdminAuthService(
-                mapper,
-                new AdminAuthProperties(newSecret, java.util.List.of(SECRET), 120, "", ""),
-                null);
+                mapper, new AdminAuthProperties(newSecret, java.util.List.of(SECRET), 120, "", ""), null);
         assertThat(rotated.verify(oldToken.token())).isPresent();
-        assertThat(rotated.verify(rotated.login("admin", "secret-pass", "127.0.0.1").token()))
+        assertThat(rotated.verify(
+                        rotated.login("admin", "secret-pass", "127.0.0.1").token()))
                 .isPresent();
         // 不带 fallback 的实例则拒绝旧 token
         AdminAuthService noFallback =

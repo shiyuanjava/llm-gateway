@@ -136,6 +136,7 @@ class OpenAiStreamReadTest {
         assertEquals(100, usage.promptTokens(), "OpenAI 口径 prompt 已含缓存，直接沿用");
         assertEquals(64, usage.cacheReadTokens(), "缓存读明细从 prompt_tokens_details 拆出");
     }
+
     @Test
     void capturesDeepSeekTopLevelCacheHitTokensFromUsageFrame() throws IOException {
         String sse =

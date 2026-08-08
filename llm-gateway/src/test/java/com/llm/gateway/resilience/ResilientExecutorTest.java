@@ -89,8 +89,8 @@ class ResilientExecutorTest {
     @Test
     void nonRetryableErrorSkipsRetryAndBreakerButFallsBack() {
         // maxRetries=2：不可重试错误既不该重试（只调用 1 次），也不该计入熔断失败
-        ResilientExecutor retryExecutor = new ResilientExecutor(
-                registry, Fixtures.properties(60, 300, 1_000_000L, 2, 30, 2));
+        ResilientExecutor retryExecutor =
+                new ResilientExecutor(registry, Fixtures.properties(60, 300, 1_000_000L, 2, 30, 2));
         RouteDecision decision =
                 new RouteDecision(new ProviderTarget("p-4xx", "m"), List.of(new ProviderTarget("p-ok2", "m")));
 

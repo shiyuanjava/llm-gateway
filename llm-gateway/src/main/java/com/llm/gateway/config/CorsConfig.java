@@ -43,8 +43,7 @@ public class CorsConfig {
         return registration;
     }
 
-    private static CorsConfiguration corsConfiguration(
-            List<String> origins, List<String> methods, long maxAgeSeconds) {
+    private static CorsConfiguration corsConfiguration(List<String> origins, List<String> methods, long maxAgeSeconds) {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(methods);

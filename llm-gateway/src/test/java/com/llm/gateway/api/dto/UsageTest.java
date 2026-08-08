@@ -53,8 +53,7 @@ class UsageTest {
         assertEquals(12, standard.cacheReadTokens());
 
         Usage oversized = mapper.readValue(
-                "{\"prompt_tokens\":10,\"completion_tokens\":1,\"prompt_cache_hit_tokens\":999}",
-                Usage.class);
+                "{\"prompt_tokens\":10,\"completion_tokens\":1,\"prompt_cache_hit_tokens\":999}", Usage.class);
         assertEquals(10, oversized.cacheReadTokens());
     }
 

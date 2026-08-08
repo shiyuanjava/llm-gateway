@@ -29,10 +29,8 @@ class IpAddressMatcherTest {
     void rejectsHostnamesAndInvalidPrefixes() {
         assertThatThrownBy(() -> IpAddressMatcher.parse("example.com"))
                 .isInstanceOf(IpControlValidationException.class);
-        assertThatThrownBy(() -> IpAddressMatcher.parse("127.1"))
-                .isInstanceOf(IpControlValidationException.class);
-        assertThatThrownBy(() -> IpAddressMatcher.parse("256.0.0.1"))
-                .isInstanceOf(IpControlValidationException.class);
+        assertThatThrownBy(() -> IpAddressMatcher.parse("127.1")).isInstanceOf(IpControlValidationException.class);
+        assertThatThrownBy(() -> IpAddressMatcher.parse("256.0.0.1")).isInstanceOf(IpControlValidationException.class);
         assertThatThrownBy(() -> IpAddressMatcher.parse("10.0.0.0/33"))
                 .isInstanceOf(IpControlValidationException.class);
     }
