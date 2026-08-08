@@ -2,6 +2,8 @@ package com.llm.gateway.admin;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.llm.gateway.admin.dto.PricingWriteRequest;
+import com.llm.gateway.admin.web.AdminApiException;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.config.ConfigRefreshService;
 import com.llm.gateway.persistence.entity.ModelPricingEntity;
@@ -46,7 +50,8 @@ public class PricingAdminController {
      * @return 新增后的实体
      */
     @PostMapping
-    public R<ModelPricingEntity> create(@RequestBody ModelPricingEntity entity) {
+    public R<ModelPricingEntity> create(@Valid @RequestBody PricingWriteRequest request) {
+        ModelPricingEntity entity = toEntity(request);
         entity.setId(null);
         mapper.insert(entity);
         refreshService.reloadAll();
@@ -62,9 +67,10 @@ public class PricingAdminController {
      * @return 修改后的实体
      */
     @PutMapping("/{id}")
-    public R<ModelPricingEntity> update(@PathVariable Long id, @RequestBody ModelPricingEntity entity) {
+    public R<ModelPricingEntity> update(@PathVariable Long id, @Valid @RequestBody PricingWriteRequest request) {
+        ModelPricingEntity entity = toEntity(request);
         entity.setId(id);
-        mapper.update(
+        int affected = mapper.update(
                 null,
                 Wrappers.<ModelPricingEntity>update()
                         .eq("id", id)
@@ -73,8 +79,21 @@ public class PricingAdminController {
                         .set("output_per_1k", entity.getOutputPer1k())
                         .set("cache_read_per_1k", entity.getCacheReadPer1k())
                         .set("cache_write_per_1k", entity.getCacheWritePer1k()));
+        if (affected != 1) {
+            throw AdminApiException.notFound("计费记录不存在");
+        }
         refreshService.reloadAll();
         return R.ok(entity);
+    }
+
+    private ModelPricingEntity toEntity(PricingWriteRequest request) {
+        ModelPricingEntity entity = new ModelPricingEntity();
+        entity.setModel(request.model().trim());
+        entity.setInputPer1k(request.inputPer1k());
+        entity.setOutputPer1k(request.outputPer1k());
+        entity.setCacheReadPer1k(request.cacheReadPer1k());
+        entity.setCacheWritePer1k(request.cacheWritePer1k());
+        return entity;
     }
 
     /**
@@ -85,7 +104,9 @@ public class PricingAdminController {
      */
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        mapper.deleteById(id);
+        if (mapper.deleteById(id) != 1) {
+            throw AdminApiException.notFound("计费记录不存在");
+        }
         refreshService.reloadAll();
         return R.ok();
     }

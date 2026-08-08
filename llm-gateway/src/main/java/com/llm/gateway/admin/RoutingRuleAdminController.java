@@ -2,6 +2,8 @@ package com.llm.gateway.admin;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.llm.gateway.admin.dto.RoutingRuleWriteRequest;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.config.ConfigRefreshService;
 
@@ -42,9 +45,8 @@ public class RoutingRuleAdminController {
      * @return 保存结果
      */
     @PostMapping
-    public R<RoutingRuleView> create(@RequestBody RoutingRuleView view) {
-        view.setId(null);
-        RoutingRuleView saved = service.save(view);
+    public R<RoutingRuleView> create(@Valid @RequestBody RoutingRuleWriteRequest request) {
+        RoutingRuleView saved = service.create(request);
         refreshService.reloadAll();
         return R.ok(saved);
     }
@@ -57,9 +59,8 @@ public class RoutingRuleAdminController {
      * @return 保存结果
      */
     @PutMapping("/{id}")
-    public R<RoutingRuleView> update(@PathVariable Long id, @RequestBody RoutingRuleView view) {
-        view.setId(id);
-        RoutingRuleView saved = service.save(view);
+    public R<RoutingRuleView> update(@PathVariable Long id, @Valid @RequestBody RoutingRuleWriteRequest request) {
+        RoutingRuleView saved = service.update(id, request);
         refreshService.reloadAll();
         return R.ok(saved);
     }

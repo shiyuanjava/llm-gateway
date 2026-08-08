@@ -2,6 +2,8 @@ package com.llm.gateway.admin;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.llm.gateway.admin.dto.ApiKeyWriteRequest;
+import com.llm.gateway.admin.web.AdminApiException;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.auth.ApiKeyGenerator;
 import com.llm.gateway.config.ConfigRefreshService;
@@ -51,7 +55,8 @@ public class ApiKeyAdminController {
      * @return 实体 + 一次性明文 Key
      */
     @PostMapping
-    public R<ApiKeyCreatedView> create(@RequestBody ApiKeyEntity entity) {
+    public R<ApiKeyCreatedView> create(@Valid @RequestBody ApiKeyWriteRequest request) {
+        ApiKeyEntity entity = toEntity(request);
         String plainKey = ApiKeyGenerator.generate();
         entity.setId(null);
         entity.setKeyHash(ApiKeyGenerator.sha256(plainKey));
@@ -74,11 +79,12 @@ public class ApiKeyAdminController {
      * @return 修改后的实体（不含 key 字段）
      */
     @PutMapping("/{id}")
-    public R<ApiKeyEntity> update(@PathVariable Long id, @RequestBody ApiKeyEntity entity) {
+    public R<ApiKeyEntity> update(@PathVariable Long id, @Valid @RequestBody ApiKeyWriteRequest request) {
+        ApiKeyEntity entity = toEntity(request);
         entity.setId(id);
         entity.setKeyHash(null);
         entity.setKeyPrefix(null);
-        mapper.update(
+        int affected = mapper.update(
                 null,
                 Wrappers.<ApiKeyEntity>update()
                         .eq("id", id)
@@ -86,8 +92,20 @@ public class ApiKeyAdminController {
                         .set("roles", entity.getRoles())
                         .set("allowed_models", entity.getAllowedModels())
                         .set("enabled", entity.getEnabled()));
+        if (affected != 1) {
+            throw AdminApiException.notFound("API Key 不存在");
+        }
         refreshService.reloadAll();
         return R.ok(entity);
+    }
+
+    private ApiKeyEntity toEntity(ApiKeyWriteRequest request) {
+        ApiKeyEntity entity = new ApiKeyEntity();
+        entity.setTenant(request.tenant().trim());
+        entity.setRoles(request.roles().trim());
+        entity.setAllowedModels(request.allowedModels().trim());
+        entity.setEnabled(request.enabled());
+        return entity;
     }
 
     /**
@@ -98,7 +116,9 @@ public class ApiKeyAdminController {
      */
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        mapper.deleteById(id);
+        if (mapper.deleteById(id) != 1) {
+            throw AdminApiException.notFound("API Key 不存在");
+        }
         refreshService.reloadAll();
         return R.ok();
     }

@@ -1,5 +1,6 @@
 package com.llm.gateway.admin;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -8,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.llm.gateway.admin.dto.RoutingRuleWriteRequest;
+import com.llm.gateway.admin.web.AdminApiException;
 import com.llm.gateway.persistence.entity.RoutingFallbackEntity;
 import com.llm.gateway.persistence.entity.RoutingRuleEntity;
 import com.llm.gateway.persistence.mapper.RoutingFallbackMapper;
@@ -41,69 +44,92 @@ public class RoutingRuleAdminService {
                 .toList();
     }
 
-    /**
-     * 新增或修改一条规则（连同降级链整体替换）。
-     *
-     * @param view 规则视图
-     * @return 保存后的规则视图
-     */
+    /** Create a rule and replace its fallback chain in one transaction. */
     @Transactional
-    public RoutingRuleView save(RoutingRuleView view) {
-        RoutingRuleEntity entity = new RoutingRuleEntity();
-        entity.setId(view.getId());
-        entity.setAlias(view.getAlias());
-        entity.setPrimaryProvider(view.getPrimaryProvider());
-        entity.setPrimaryModel(view.getPrimaryModel());
-        entity.setMaxPromptTokens(view.getMaxPromptTokens());
-        entity.setEscalateProvider(view.getEscalateProvider());
-        entity.setEscalateModel(view.getEscalateModel());
-        if (entity.getId() == null) {
-            ruleMapper.insert(entity);
-        } else {
-            // PUT 全量更新语义:显式 set 全部业务列(null 也写入),可空的阈值/升级目标才能被清回 NULL
-            ruleMapper.update(
-                    null,
-                    Wrappers.<RoutingRuleEntity>update()
-                            .eq("id", entity.getId())
-                            .set("alias", entity.getAlias())
-                            .set("primary_provider", entity.getPrimaryProvider())
-                            .set("primary_model", entity.getPrimaryModel())
-                            .set("max_prompt_tokens", entity.getMaxPromptTokens())
-                            .set("escalate_provider", entity.getEscalateProvider())
-                            .set("escalate_model", entity.getEscalateModel()));
-        }
-
-        // 降级链整体替换：先删后插
-        fallbackMapper.delete(
-                Wrappers.<RoutingFallbackEntity>lambdaQuery().eq(RoutingFallbackEntity::getRuleAlias, view.getAlias()));
-        int seq = 1;
-        for (RoutingRuleView.Fallback fb : view.getFallbacks()) {
-            RoutingFallbackEntity fe = new RoutingFallbackEntity();
-            fe.setRuleAlias(view.getAlias());
-            fe.setSeq(fb.getSeq() == null ? seq : fb.getSeq());
-            fe.setProvider(fb.getProvider());
-            fe.setModel(fb.getModel());
-            fallbackMapper.insert(fe);
-            seq++;
-        }
-        view.setId(entity.getId());
-        return view;
+    public RoutingRuleView create(RoutingRuleWriteRequest request) {
+        RoutingRuleEntity entity = entityOf(request);
+        ruleMapper.insert(entity);
+        replaceFallbacks(entity.getAlias(), request.fallbacks());
+        return toView(entity, fallbackEntities(entity.getAlias(), request.fallbacks()));
     }
 
-    /**
-     * 删除一条规则及其降级链。
-     *
-     * @param id 规则主键
-     */
+    /** Update a rule while keeping its alias immutable. */
+    @Transactional
+    public RoutingRuleView update(Long id, RoutingRuleWriteRequest request) {
+        RoutingRuleEntity existing = ruleMapper.selectById(id);
+        if (existing == null) {
+            throw AdminApiException.notFound("路由规则不存在");
+        }
+        if (!existing.getAlias().equals(request.alias().trim())) {
+            throw AdminApiException.conflict("路由 alias 不允许修改");
+        }
+        int affected = ruleMapper.update(
+                null,
+                Wrappers.<RoutingRuleEntity>update()
+                        .eq("id", id)
+                        .set("primary_provider", request.primaryProvider().trim())
+                        .set("primary_model", request.primaryModel().trim())
+                        .set("max_prompt_tokens", request.maxPromptTokens())
+                        .set("escalate_provider", request.normalizedEscalateProvider())
+                        .set("escalate_model", request.normalizedEscalateModel()));
+        if (affected != 1) {
+            throw AdminApiException.notFound("路由规则不存在");
+        }
+        replaceFallbacks(existing.getAlias(), request.fallbacks());
+        existing.setPrimaryProvider(request.primaryProvider().trim());
+        existing.setPrimaryModel(request.primaryModel().trim());
+        existing.setMaxPromptTokens(request.maxPromptTokens());
+        existing.setEscalateProvider(request.normalizedEscalateProvider());
+        existing.setEscalateModel(request.normalizedEscalateModel());
+        return toView(existing, fallbackEntities(existing.getAlias(), request.fallbacks()));
+    }
+
+    /** Delete a rule and its fallback chain; missing rows are explicit 404s. */
     @Transactional
     public void delete(Long id) {
-        RoutingRuleEntity rule = ruleMapper.selectById(id);
-        if (rule == null) {
-            return;
+        RoutingRuleEntity existing = ruleMapper.selectById(id);
+        if (existing == null) {
+            throw AdminApiException.notFound("路由规则不存在");
         }
-        ruleMapper.deleteById(id);
+        if (ruleMapper.deleteById(id) != 1) {
+            throw AdminApiException.notFound("路由规则不存在");
+        }
+        fallbackMapper.delete(Wrappers.<RoutingFallbackEntity>lambdaQuery()
+                .eq(RoutingFallbackEntity::getRuleAlias, existing.getAlias()));
+    }
+
+    private RoutingRuleEntity entityOf(RoutingRuleWriteRequest request) {
+        RoutingRuleEntity entity = new RoutingRuleEntity();
+        entity.setAlias(request.alias().trim());
+        entity.setPrimaryProvider(request.primaryProvider().trim());
+        entity.setPrimaryModel(request.primaryModel().trim());
+        entity.setMaxPromptTokens(request.maxPromptTokens());
+        entity.setEscalateProvider(request.normalizedEscalateProvider());
+        entity.setEscalateModel(request.normalizedEscalateModel());
+        return entity;
+    }
+
+    private void replaceFallbacks(String alias, List<RoutingRuleWriteRequest.Fallback> fallbacks) {
         fallbackMapper.delete(
-                Wrappers.<RoutingFallbackEntity>lambdaQuery().eq(RoutingFallbackEntity::getRuleAlias, rule.getAlias()));
+                Wrappers.<RoutingFallbackEntity>lambdaQuery().eq(RoutingFallbackEntity::getRuleAlias, alias));
+        for (RoutingFallbackEntity entity : fallbackEntities(alias, fallbacks)) {
+            fallbackMapper.insert(entity);
+        }
+    }
+
+    private List<RoutingFallbackEntity> fallbackEntities(
+            String alias, List<RoutingRuleWriteRequest.Fallback> fallbacks) {
+        List<RoutingFallbackEntity> entities = new ArrayList<>(fallbacks.size());
+        for (int index = 0; index < fallbacks.size(); index++) {
+            RoutingRuleWriteRequest.Fallback fallback = fallbacks.get(index);
+            RoutingFallbackEntity entity = new RoutingFallbackEntity();
+            entity.setRuleAlias(alias);
+            entity.setSeq(index + 1);
+            entity.setProvider(fallback.provider().trim());
+            entity.setModel(fallback.model().trim());
+            entities.add(entity);
+        }
+        return entities;
     }
 
     /**
