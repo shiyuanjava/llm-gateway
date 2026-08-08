@@ -50,7 +50,7 @@ public final class Fixtures {
                 Map.of("mock", new ProviderConfig("", "")),
                 new RateLimit("memory", requestsPerMinute),
                 new Quota(tokensPerTenant),
-                new Cache(true, "memory", cacheTtlSeconds, new Cache.Semantic(false, 0.92)),
+                new Cache(true, "memory", cacheTtlSeconds, "tenant", new Cache.Semantic(false, 0.92)),
                 new Guardrail(List.of("制造炸弹")),
                 new Resilience(maxRetries, new CircuitBreakerConfig(cbThreshold, cbOpenSeconds)),
                 new GatewayProperties.Http(5000, 30000));

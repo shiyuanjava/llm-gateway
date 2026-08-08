@@ -105,9 +105,18 @@ public record GatewayProperties(
      * @param enabled    是否启用缓存
      * @param store      缓存后端:memory(默认)/ redis。由 @ConditionalOnProperty 消费,选择 ResponseCache 实现
      * @param ttlSeconds 缓存条目存活秒数
+     * @param scope      隔离口径:tenant(默认,每租户独立分区)/ global(跨租户共享,仅在响应不含租户私有内容时使用)
      * @param semantic   语义缓存子配置
      */
-    public record Cache(boolean enabled, String store, long ttlSeconds, Semantic semantic) {
+    public record Cache(boolean enabled, String store, long ttlSeconds, String scope, Semantic semantic) {
+
+        /** 跨租户共享的口径值；其余任何值（含 null）都按租户隔离，避免配置笔误退化成共享。 */
+        public static final String SCOPE_GLOBAL = "global";
+
+        /** @return 是否跨租户共享缓存条目 */
+        public boolean sharedAcrossTenants() {
+            return SCOPE_GLOBAL.equalsIgnoreCase(scope);
+        }
 
         /**
          * 语义缓存配置。

@@ -1,5 +1,6 @@
 package com.llm.gateway.cache;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -13,6 +14,10 @@ import com.llm.gateway.config.GatewayProperties;
  *
  * <p>相比精确缓存，它能覆盖「换了说法但意思相同」的请求。本实现为单机内存版，按 FIFO 限制容量；
  * 生产环境通常用向量数据库（Milvus、pgvector 等）承载。
+ *
+ * <p><strong>分区不可省</strong>：命中是「相似」而非「相同」，跨租户共享会把租户 A 的原始回答
+ * 返回给提出近似问题的租户 B；跨模型共享则让租户拿到 {@code allowedModels} 之外的模型产物。
+ * 因此条目按「租户 + 请求模型」分区，只有同分区内才比对相似度。
  */
 @Component
 public class SemanticCache {
@@ -35,12 +40,14 @@ public class SemanticCache {
     }
 
     /**
-     * 查询与给定文本语义最相近且超过阈值的缓存结果。
+     * 查询同分区内与给定文本语义最相近且超过阈值的缓存结果。
      *
-     * @param text 查询文本
+     * @param tenant 租户标识；{@code null} 表示跨租户共享口径
+     * @param model  请求的模型或别名
+     * @param text   查询文本
      * @return 命中则返回响应，否则为空
      */
-    public Optional<ChatCompletionResponse> lookup(String text) {
+    public Optional<ChatCompletionResponse> lookup(String tenant, String model, String text) {
         float[] query = embedder.embed(text);
         long now = clock();
         ChatCompletionResponse best = null;
@@ -48,6 +55,9 @@ public class SemanticCache {
         for (Entry entry : entries) {
             if (entry.expiresAt < now) {
                 entries.remove(entry);
+                continue;
+            }
+            if (!entry.matchesPartition(tenant, model)) {
                 continue;
             }
             double score = cosine(query, entry.embedding);
@@ -62,11 +72,13 @@ public class SemanticCache {
     /**
      * 写入一条语义缓存。
      *
+     * @param tenant   租户标识；{@code null} 表示跨租户共享口径
+     * @param model    请求的模型或别名
      * @param text     原始查询文本
      * @param response 对应响应
      */
-    public void put(String text, ChatCompletionResponse response) {
-        entries.addLast(new Entry(embedder.embed(text), response, clock() + ttlMillis));
+    public void put(String tenant, String model, String text, ChatCompletionResponse response) {
+        entries.addLast(new Entry(tenant, model, embedder.embed(text), response, clock() + ttlMillis));
         while (entries.size() > MAX_ENTRIES) {
             entries.pollFirst();
         }
@@ -107,7 +119,13 @@ public class SemanticCache {
     }
 
     /**
-     * 语义缓存条目。
+     * 语义缓存条目：{@code tenant}/{@code model} 构成分区键，只有同分区才参与相似度比对。
      */
-    private record Entry(float[] embedding, ChatCompletionResponse response, long expiresAt) {}
+    private record Entry(
+            String tenant, String model, float[] embedding, ChatCompletionResponse response, long expiresAt) {
+
+        boolean matchesPartition(String otherTenant, String otherModel) {
+            return Objects.equals(tenant, otherTenant) && Objects.equals(model, otherModel);
+        }
+    }
 }

@@ -102,6 +102,8 @@ gateway:
     enabled: true
     store: ${GATEWAY_CACHE_STORE:memory}
     ttl-seconds: 300
+    # tenant(默认)=每租户独立分区;global=跨租户共享,仅在确认响应不含租户私有内容时才可切换
+    scope: ${GATEWAY_CACHE_SCOPE:tenant}
     semantic:
       enabled: false
       similarity-threshold: 0.92

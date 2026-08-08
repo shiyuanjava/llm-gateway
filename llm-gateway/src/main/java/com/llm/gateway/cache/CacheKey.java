@@ -16,9 +16,24 @@ public final class CacheKey {
     /**
      * Encodes nullable strings with an explicit null marker and byte length before hashing. This
      * makes message boundaries unambiguous even when content contains legacy delimiters.
+     *
+     * <p>跨租户共享口径的键（{@code tenant == null}）。仅供显式配置 {@code gateway.cache.scope=global}
+     * 时使用；默认应走 {@link #of(ChatCompletionRequest, String)} 的租户分区键。
      */
     public static String of(ChatCompletionRequest request) {
+        return of(request, null);
+    }
+
+    /**
+     * 生成租户分区的精确缓存键。租户参与摘要，租户 A 的条目不会被租户 B 读到。
+     *
+     * @param request 请求
+     * @param tenant  租户标识；{@code null} 表示跨租户共享口径
+     * @return 十六进制 SHA-256 摘要
+     */
+    public static String of(ChatCompletionRequest request, String tenant) {
         MessageDigest digest = sha256Digest();
+        updateNullable(digest, tenant);
         updateNullable(digest, request.model());
         updateNullable(
                 digest,
