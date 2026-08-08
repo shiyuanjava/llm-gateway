@@ -18,6 +18,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.llm.gateway.admin.web.AdminApiException;
 import com.llm.gateway.admin.web.PageResult;
 import com.llm.gateway.persistence.entity.IpBlockEntity;
 import com.llm.gateway.persistence.entity.IpBlockRuleEntity;
@@ -238,14 +239,17 @@ public class IpBlockService {
     public void unblock(long id) {
         IpBlockEntity record = blockMapper.selectById(id);
         if (record == null) {
-            return;
+            throw AdminApiException.notFound("IP 封禁记录不存在");
         }
-        blockMapper.update(
+        int updated = blockMapper.update(
                 null,
                 Wrappers.<IpBlockEntity>update()
                         .eq("id", id)
                         .set("active", false)
                         .set("updated_at", now()));
+        if (updated != 1) {
+            throw AdminApiException.notFound("IP 封禁记录不存在");
+        }
         blockCache.invalidate(record.getIpAddress());
         requestWindows.invalidate(record.getIpAddress());
     }

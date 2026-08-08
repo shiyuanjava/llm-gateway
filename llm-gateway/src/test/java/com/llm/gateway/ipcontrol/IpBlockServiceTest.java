@@ -8,13 +8,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
+import com.llm.gateway.admin.web.AdminApiException;
 import com.llm.gateway.persistence.entity.IpBlockEntity;
 import com.llm.gateway.persistence.entity.IpBlockRuleEntity;
 import com.llm.gateway.persistence.mapper.IpBlockMapper;
 import com.llm.gateway.persistence.mapper.IpBlockRuleMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -42,7 +45,7 @@ class IpBlockServiceTest {
         rule.setMaxRequests(2);
         rule.setBlockSeconds(300);
         rule.setWhitelist("");
-        when(ruleMapper.selectById(1L)).thenReturn(rule);
+        lenient().when(ruleMapper.selectById(1L)).thenReturn(rule);
         lenient().when(blockMapper.selectOne(any())).thenReturn(null);
         service = new TestIpBlockService(ruleMapper, blockMapper);
     }
@@ -109,9 +112,10 @@ class IpBlockServiceTest {
 
     @Test
     void expiredCacheDoesNotOverrideConcurrentManualBlock() {
-        IpBlockEntity expired = block("198.51.100.20", IpBlockService.SOURCE_AUTO, service.now().minusSeconds(1));
-        IpBlockEntity replacement =
-                block("198.51.100.20", IpBlockService.SOURCE_MANUAL, service.now().plusHours(1));
+        IpBlockEntity expired =
+                block("198.51.100.20", IpBlockService.SOURCE_AUTO, service.now().minusSeconds(1));
+        IpBlockEntity replacement = block(
+                "198.51.100.20", IpBlockService.SOURCE_MANUAL, service.now().plusHours(1));
         when(blockMapper.selectOne(any())).thenReturn(expired, replacement);
         when(blockMapper.expireAddressIfElapsed("198.51.100.20", service.now())).thenReturn(0);
 
@@ -120,6 +124,32 @@ class IpBlockServiceTest {
         assertThat(decision.blocked()).isTrue();
         assertThat(decision.source()).isEqualTo(IpBlockService.SOURCE_MANUAL);
         assertThat(decision.blockedUntil()).isEqualTo(service.now().plusHours(1));
+    }
+
+    @Test
+    void unblockThrowsNotFoundWhenRecordDoesNotExist() {
+        when(blockMapper.selectById(999L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.unblock(999L)).isInstanceOfSatisfying(AdminApiException.class, error -> {
+            assertThat(error.getMessage()).isEqualTo("IP 封禁记录不存在");
+            assertThat(error.status()).isEqualTo(HttpStatus.NOT_FOUND);
+        });
+        verify(blockMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void unblockThrowsNotFoundWhenConcurrentUpdateAffectsNoRows() {
+        IpBlockEntity record = block(
+                "198.51.100.21", IpBlockService.SOURCE_MANUAL, service.now().plusHours(1));
+        record.setId(123L);
+        when(blockMapper.selectById(123L)).thenReturn(record);
+        when(blockMapper.update(any(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.unblock(123L)).isInstanceOfSatisfying(AdminApiException.class, error -> {
+            assertThat(error.getMessage()).isEqualTo("IP 封禁记录不存在");
+            assertThat(error.status()).isEqualTo(HttpStatus.NOT_FOUND);
+        });
+        verify(blockMapper).update(any(), any());
     }
 
     private IpBlockEntity block(String ipAddress, String source, LocalDateTime blockedUntil) {

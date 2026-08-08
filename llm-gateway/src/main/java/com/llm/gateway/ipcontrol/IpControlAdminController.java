@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.llm.gateway.admin.web.PageBounds;
 import com.llm.gateway.admin.web.PageResult;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.persistence.entity.IpBlockEntity;
@@ -56,7 +57,8 @@ public class IpControlAdminController {
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
-        return R.ok(blockService.listBlocks(ipAddress, source, active, page, size));
+        PageBounds bounds = PageBounds.of(page, size);
+        return R.ok(blockService.listBlocks(ipAddress, source, active, bounds.page(), bounds.size()));
     }
 
     @PostMapping("/blocks")

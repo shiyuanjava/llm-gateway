@@ -2,6 +2,7 @@ package com.llm.gateway.audit;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -23,6 +24,10 @@ public class AdminAuditFilter extends OncePerRequestFilter {
     private static final String LOGIN_PATH = "/admin/auth/login";
     /** 请求体缓存上限（字节）：审计 detail 落库前会再截断到 2000 字符，8KB 足够且内存有界。 */
     private static final int MAX_CACHED_BODY_BYTES = 8192;
+
+    private static final Pattern SENSITIVE_JSON_FIELD = Pattern.compile(
+            "(?i)(\"(?:password|api[_-]?key|key|key[_-]?hash|authorization|access[_-]?token|refresh[_-]?token|token|secret)\"\\s*:\\s*\")[^\"]*(\")");
+    private static final Pattern API_KEY_LITERAL = Pattern.compile("(?i)(\"[^\"]+\"\\s*:\\s*\")sk-[^\"]*(\")");
 
     private final AdminAuditService auditService;
 
@@ -51,7 +56,7 @@ public class AdminAuditFilter extends OncePerRequestFilter {
             if (principal != null) {
                 auditService.record(
                         principal.username(),
-                        actionOf(wrapped.getMethod()),
+                        actionOf(wrapped.getMethod(), wrapped.getRequestURI()),
                         resourceOf(wrapped.getRequestURI()),
                         sanitize(new String(wrapped.getContentAsByteArray(), StandardCharsets.UTF_8)),
                         wrapped.getRemoteAddr(),
@@ -61,7 +66,10 @@ public class AdminAuditFilter extends OncePerRequestFilter {
     }
 
     /** HTTP 方法映射为审计动作。 */
-    private String actionOf(String method) {
+    private String actionOf(String method, String uri) {
+        if ("POST".equalsIgnoreCase(method) && "/admin/meta/reload".equals(uri)) {
+            return "RELOAD";
+        }
         return switch (method.toUpperCase()) {
             case "POST" -> "CREATE";
             case "PUT", "PATCH" -> "UPDATE";
@@ -82,7 +90,7 @@ public class AdminAuditFilter extends OncePerRequestFilter {
         if (body == null || body.isBlank()) {
             return null;
         }
-        return body.replaceAll("(\"password\"\\s*:\\s*\")[^\"]*(\")", "$1***$2")
-                .replaceAll("(\"apiKey\"\\s*:\\s*\"sk-[^\"]{4})[^\"]*(\")", "$1***$2");
+        String redactedFields = SENSITIVE_JSON_FIELD.matcher(body).replaceAll("$1***$2");
+        return API_KEY_LITERAL.matcher(redactedFields).replaceAll("$1***$2");
     }
 }

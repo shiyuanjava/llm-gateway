@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.llm.gateway.admin.web.PageBounds;
 import com.llm.gateway.admin.web.PageResult;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.persistence.entity.AdminAuditLogEntity;
@@ -48,13 +49,14 @@ public class AuditAdminController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
+        PageBounds bounds = PageBounds.of(page, size);
         LambdaQueryWrapper<AdminAuditLogEntity> query = Wrappers.<AdminAuditLogEntity>lambdaQuery()
                 .eq(username != null && !username.isBlank(), AdminAuditLogEntity::getUsername, username)
                 .eq(action != null && !action.isBlank(), AdminAuditLogEntity::getAction, action)
                 .ge(from != null, AdminAuditLogEntity::getCreatedAt, from)
                 .le(to != null, AdminAuditLogEntity::getCreatedAt, to)
                 .orderByDesc(AdminAuditLogEntity::getId);
-        Page<AdminAuditLogEntity> p = mapper.selectPage(new Page<>(page, size), query);
+        Page<AdminAuditLogEntity> p = mapper.selectPage(new Page<>(bounds.page(), bounds.size()), query);
         return R.ok(new PageResult<>(p.getRecords(), p.getTotal(), p.getCurrent(), p.getSize()));
     }
 }

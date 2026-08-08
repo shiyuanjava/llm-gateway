@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.llm.gateway.admin.web.PageBounds;
 import com.llm.gateway.admin.web.PageResult;
 import com.llm.gateway.admin.web.R;
 import com.llm.gateway.persistence.entity.RequestLogEntity;
@@ -52,6 +53,7 @@ public class LogAdminController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size) {
+        PageBounds bounds = PageBounds.of(page, size);
         QueryWrapper<RequestLogEntity> query = new QueryWrapper<>();
         if (StringUtils.hasText(tenant)) {
             query.eq("tenant", tenant);
@@ -70,7 +72,7 @@ public class LogAdminController {
         }
         query.orderByDesc("id");
 
-        Page<RequestLogEntity> p = mapper.selectPage(new Page<>(page, size), query);
+        Page<RequestLogEntity> p = mapper.selectPage(new Page<>(bounds.page(), bounds.size()), query);
         return R.ok(new PageResult<>(p.getRecords(), p.getTotal(), p.getCurrent(), p.getSize()));
     }
 

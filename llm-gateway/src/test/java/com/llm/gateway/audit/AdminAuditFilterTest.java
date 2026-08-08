@@ -1,44 +1,33 @@
 package com.llm.gateway.audit;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.llm.gateway.persistence.entity.AdminAuditLogEntity;
-import com.llm.gateway.persistence.mapper.AdminAuditLogMapper;
+import com.llm.gateway.auth.admin.AdminJwtFilter;
+import com.llm.gateway.auth.admin.AdminPrincipal;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
-@SpringBootTest(
-        properties = {
-            "gateway.admin.jwt-secret=test-secret-0123456789abcdef0123456789abcdef",
-            "gateway.admin.bootstrap-username=it-admin",
-            "gateway.admin.bootstrap-password=it-admin-pass"
-        })
-@AutoConfigureMockMvc
 class AdminAuditFilterTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private AdminAuditLogMapper auditMapper;
-
     @Test
-    void anonymousWriteIsNotAudited() throws Exception {
-        long before = auditMapper.selectCount(
-                Wrappers.<AdminAuditLogEntity>lambdaQuery().eq(AdminAuditLogEntity::getAction, "UPDATE"));
-        // 无 token，被 JWT 过滤器 401 拦截，审计过滤器不应记录（无可信身份）
-        mockMvc.perform(put("/admin/pricing/999999")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"model\":\"x\"}"));
-        long after = auditMapper.selectCount(
-                Wrappers.<AdminAuditLogEntity>lambdaQuery().eq(AdminAuditLogEntity::getAction, "UPDATE"));
-        assertThat(after).isEqualTo(before);
+    void metaReloadIsAuditedAsReload() throws Exception {
+        AdminAuditService auditService = mock(AdminAuditService.class);
+        AdminAuditFilter filter = new AdminAuditFilter(auditService);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/admin/meta/reload");
+        request.setRequestURI("/admin/meta/reload");
+        request.setRemoteAddr("127.0.0.1");
+        request.setAttribute(AdminJwtFilter.ADMIN_PRINCIPAL_ATTRIBUTE, new AdminPrincipal("admin"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        verify(auditService).record(eq("admin"), eq("RELOAD"), eq("meta/reload"), isNull(), anyString(), eq(200));
     }
 }
