@@ -1243,24 +1243,51 @@ MySQL 初始化后不要直接改这些密码；初始化脚本只在空数据�
 
 ### 6.2 创建 `llm-gateway.env`
 
-仍在 root shell：
+这四个值从 `platform.env` 派生，用 `printf` 而不是 heredoc，理由同第 10.1 节（终端粘贴加前导空格会让 heredoc 的 `EOF` 失效）：
 
 ```bash
+sudo bash -c '
+set -eu
+umask 027
 . /opt/ztmdcg/secrets/platform.env
-
-cat > /opt/ztmdcg/secrets/llm-gateway.env <<EOF
-GATEWAY_MYSQL_DATABASE=${GATEWAY_MYSQL_DATABASE}
-GATEWAY_MYSQL_USER=${GATEWAY_MYSQL_USER}
-GATEWAY_MYSQL_PASSWORD=${GATEWAY_MYSQL_PASSWORD}
-GATEWAY_REDIS_PASSWORD=${GATEWAY_REDIS_PASSWORD}
-EOF
-
-chown root:gitlab-runner /opt/ztmdcg/secrets/llm-gateway.env
-chmod 640 /opt/ztmdcg/secrets/llm-gateway.env
-exit
+: "${GATEWAY_MYSQL_PASSWORD:?platform.env 未正确加载,已中止}"
+f=/opt/ztmdcg/secrets/llm-gateway.env
+{
+printf "GATEWAY_MYSQL_DATABASE=%s\n" "$GATEWAY_MYSQL_DATABASE"
+printf "GATEWAY_MYSQL_USER=%s\n" "$GATEWAY_MYSQL_USER"
+printf "GATEWAY_MYSQL_PASSWORD=%s\n" "$GATEWAY_MYSQL_PASSWORD"
+printf "GATEWAY_REDIS_PASSWORD=%s\n" "$GATEWAY_REDIS_PASSWORD"
+} > "$f"
+chown root:gitlab-runner "$f"
+chmod 640 "$f"
+echo WROTE_OK
+'
 ```
 
 `soft-training.env` 要等 Gateway 业务 API Key 创建后再写，见第 10 章。
+
+### 6.3 密钥文件自检
+
+三个密钥文件都由 `platform.env` 派生，一旦某次 `. platform.env` 没生效，派生文件会写出一堆空值而**当场不报错**：Gateway 要等到部署时才表现为连不上 MySQL/Redis，报错指向数据库，排查方向完全跑偏。每次新建或修改密钥文件后都执行这段自检：
+
+```bash
+for f in platform llm-gateway soft-training; do
+  echo "--- $f.env"
+  sudo test -f /opt/ztmdcg/secrets/$f.env && \
+    sudo awk -F= 'NF{printf "  %-34s len=%d\n", $1, length($0)-length($1)-1}' /opt/ztmdcg/secrets/$f.env || echo '  (尚未创建)'
+done
+sudo stat -c '%U %G %a %n' /opt/ztmdcg/secrets/*.env
+```
+
+三条判据：
+
+| 现象 | 含义 | 处理 |
+|---|---|---|
+| 出现 `len=-1` | 混入了非键值行（`EOF`、`chown` 等被 heredoc 吞进文件） | 删掉这些行或按本节命令重建 |
+| 出现 `len=0` | 对应变量为空，`platform.env` 未加载成功 | 重建该文件；`LLM_GATEWAY_API_KEY`、`DASHSCOPE_API_KEY` 允许为空 |
+| 属主不是 `root gitlab-runner` 或权限不是 `640` | `chown`/`chmod` 未执行 | 补执行；否则 Runner 读不到，报 `missing required file` |
+
+此时 `llm-gateway.env` 与 `platform.env` 应各自全部非空，`soft-training.env` 尚未创建属正常。
 
 ## 7. 腾讯云配置外挂 Nginx 与 HTTPS
 
@@ -1579,38 +1606,45 @@ set -eu
 umask 027
 . /opt/ztmdcg/secrets/platform.env
 : "${SOFT_MYSQL_PASSWORD:?platform.env 未正确加载,已中止}"
-cat > /opt/ztmdcg/secrets/soft-training.env <<EOF
-SOFT_MYSQL_DATABASE=${SOFT_MYSQL_DATABASE}
-SOFT_MYSQL_USER=${SOFT_MYSQL_USER}
-SOFT_MYSQL_PASSWORD=${SOFT_MYSQL_PASSWORD}
-SOFT_REDIS_PASSWORD=${SOFT_REDIS_PASSWORD}
-MINIO_ROOT_USER=${MINIO_ROOT_USER}
-MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-JWT_SECRET=$(openssl rand -hex 32)
-JWT_ACCESS_EXPIRATION_SECONDS=900
-JWT_REFRESH_EXPIRATION_SECONDS=604800
-BOOTSTRAP_ADMIN_ENABLED=true
-BOOTSTRAP_ADMIN_USERNAME=ztmdcg-admin
-BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -hex 16)
-BOOTSTRAP_ADMIN_REAL_NAME=平台管理员
-LLM_GATEWAY_API_KEY=
-DASHSCOPE_API_KEY=
-EOF
-chown root:gitlab-runner /opt/ztmdcg/secrets/soft-training.env
-chmod 640 /opt/ztmdcg/secrets/soft-training.env
+f=/opt/ztmdcg/secrets/soft-training.env
+{
+printf "SOFT_MYSQL_DATABASE=%s\n" "$SOFT_MYSQL_DATABASE"
+printf "SOFT_MYSQL_USER=%s\n" "$SOFT_MYSQL_USER"
+printf "SOFT_MYSQL_PASSWORD=%s\n" "$SOFT_MYSQL_PASSWORD"
+printf "SOFT_REDIS_PASSWORD=%s\n" "$SOFT_REDIS_PASSWORD"
+printf "MINIO_ROOT_USER=%s\n" "$MINIO_ROOT_USER"
+printf "MINIO_ROOT_PASSWORD=%s\n" "$MINIO_ROOT_PASSWORD"
+printf "JWT_SECRET=%s\n" "$(openssl rand -hex 32)"
+printf "JWT_ACCESS_EXPIRATION_SECONDS=900\n"
+printf "JWT_REFRESH_EXPIRATION_SECONDS=604800\n"
+printf "BOOTSTRAP_ADMIN_ENABLED=true\n"
+printf "BOOTSTRAP_ADMIN_USERNAME=ztmdcg-admin\n"
+printf "BOOTSTRAP_ADMIN_PASSWORD=%s\n" "$(openssl rand -hex 16)"
+printf "BOOTSTRAP_ADMIN_REAL_NAME=平台管理员\n"
+printf "LLM_GATEWAY_API_KEY=\n"
+printf "DASHSCOPE_API_KEY=\n"
+} > "$f"
+chown root:gitlab-runner "$f"
+chmod 640 "$f"
+echo WROTE_OK
 '
 ```
 
-用 `sudo bash -c` 而不是 `sudo -i`：整段作为一个脚本执行，不受粘贴时序影响。`: "${SOFT_MYSQL_PASSWORD:?...}"` 是防呆——`platform.env` 没加载成功就当场中止，不会再写出一个全空文件让问题推迟到部署时才暴露。
+用 `sudo bash -c` 而不是 `sudo -i`：整段作为一个脚本执行，不受粘贴时序影响。`: "${SOFT_MYSQL_PASSWORD:?...}"` 是防呆——`platform.env` 没加载成功就当场中止，不会写出一个全空文件让问题推迟到部署时才暴露。
 
-第二步，验证每个键都有值（只打印键名与值长度，不打印明文）：
+这里**刻意不用 heredoc**。很多终端（MobaXterm 等）粘贴多行时会给每行加前导空格，而 heredoc 的结束符 `EOF` 必须顶格，一旦变成 `  EOF` 就不再终止，后面的 `chown`、`chmod` 会被当成文件内容写进去：文件末尾多出几行垃圾，属主也停在 `root:root`，`gitlab-runner` 读不到，最终表现为 `deploy_production` 报 `missing required file`。`printf` 逐行输出没有这个约束，行首有没有空格都不影响。
+
+第二步，验证（`WROTE_OK` 出现后再执行）：
 
 ```bash
-sudo stat -c '%U %G %a %n' /opt/ztmdcg/secrets/soft-training.env
+sudo stat -c '%U %G %a' /opt/ztmdcg/secrets/soft-training.env
+sudo grep -cE '^[A-Z_]+=' /opt/ztmdcg/secrets/soft-training.env
 sudo awk -F= 'NF{printf "%-38s len=%d\n", $1, length($0)-length($1)-1}' /opt/ztmdcg/secrets/soft-training.env
 ```
 
-成功标志：权限为 `root gitlab-runner 640`；除 `LLM_GATEWAY_API_KEY` 与 `DASHSCOPE_API_KEY` 外，其余 `len` 均大于 0。若 `SOFT_MYSQL_PASSWORD` 等为 0，不要继续部署，回第一步排查 `platform.env`。
+成功标志：权限为 `root gitlab-runner 640`；顶格键值行恰好 `16` 行；除 `LLM_GATEWAY_API_KEY` 与 `DASHSCOPE_API_KEY` 外，其余 `len` 均大于 0。
+
+行数不足 16 有两种可能：出现了 `len=-1` 的行说明混入了非键值内容（heredoc 未终止的典型症状）；`len=0` 遍地说明 `platform.env` 没加载成功。两种情况都不要继续部署，重新执行第一步。
 
 第三步，填入外部 API Key。用 `sed` 定点替换，同样不涉及交互输入：
 

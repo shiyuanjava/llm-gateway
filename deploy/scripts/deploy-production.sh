@@ -23,10 +23,17 @@ done
 exec 9>"$LOCK_FILE"
 flock -w 600 9
 
-install -d -m 750 "$PLATFORM_DIR/mysql/init" "$PLATFORM_DIR/nacos-init" "$APP_DIR" "$NGINX_DIR/conf.d" "$NGINX_DIR/snippets" "$OPS_DIR"
+install -d -m 750 "$APP_DIR" "$NGINX_DIR/conf.d" "$NGINX_DIR/snippets" "$OPS_DIR"
+# 这两个目录要被以非 root 用户运行的容器读取,必须 755:
+#   mysql 的 entrypoint 降权到 mysql(uid 999)后才扫 /docker-entrypoint-initdb.d,
+#   目录不可遍历时 glob 返回空 —— 静默跳过建库,容器仍然 Healthy,直到应用连不上才暴露;
+#   nacos-init 用的 curlimages/curl 以 curl_user(uid 100)运行,读不到脚本时
+#   sh 打不开文件直接退出,表现为 exited (2) 而没有任何脚本输出。
+# 两个脚本都不含密钥(口令由 compose 经环境变量注入),放开读权限没有暴露面。
+install -d -m 755 "$PLATFORM_DIR/mysql/init" "$PLATFORM_DIR/nacos-init"
 install -m 640 "$SOURCE_ROOT/deploy/platform/docker-compose.yml" "$PLATFORM_DIR/docker-compose.yml"
-install -m 750 "$SOURCE_ROOT/deploy/platform/mysql/init/10-create-app-databases.sh" "$PLATFORM_DIR/mysql/init/10-create-app-databases.sh"
-install -m 750 "$SOURCE_ROOT/deploy/platform/nacos-init/init.sh" "$PLATFORM_DIR/nacos-init/init.sh"
+install -m 755 "$SOURCE_ROOT/deploy/platform/mysql/init/10-create-app-databases.sh" "$PLATFORM_DIR/mysql/init/10-create-app-databases.sh"
+install -m 755 "$SOURCE_ROOT/deploy/platform/nacos-init/init.sh" "$PLATFORM_DIR/nacos-init/init.sh"
 install -m 640 "$SOURCE_ROOT/deploy/production/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 install -m 640 "$SOURCE_ROOT/deploy/nginx/proxy-common.conf" "$NGINX_DIR/snippets/proxy-common.conf"
 install -m 750 "$SOURCE_ROOT/deploy/scripts/backup-runtime.sh" "$OPS_DIR/backup-runtime.sh"
