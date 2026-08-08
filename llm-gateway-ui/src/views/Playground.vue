@@ -18,6 +18,7 @@ import {
 } from 'lucide-vue-next'
 import PageIntro from '../components/PageIntro.vue'
 import EmptyState from '../components/EmptyState.vue'
+import { extractGatewayMessage } from '../api/error'
 import {
   CHAT_COMPLETIONS_PATH,
   STREAM_TIMEOUT_MS,
@@ -116,13 +117,13 @@ async function send() {
 
     if (!resp.ok) {
       // 流开始前的错误是普通 JSON(网关语义)
-      let msg = `HTTP ${resp.status}`
+      let payload
       try {
-        const err = await resp.json()
-        msg = err?.error?.message || err?.message || err?.msg || msg
+        payload = await resp.json()
       } catch {
         /* 保留状态码信息 */
       }
+      let msg = extractGatewayMessage(payload, `HTTP ${resp.status}`)
       if (resp.status === 401) msg = 'API Key 无效或未授权：' + msg
       assistant.content = msg
       assistant.error = true
@@ -154,7 +155,7 @@ async function send() {
           }
           if (evt.error) {
             assistant.error = true
-            assistant.content += `\n[已中断] ${evt.error.message || evt.error.code || '流被网关终止'}`
+            assistant.content += `\n[已中断] ${extractGatewayMessage(evt, evt.error.code || '流被网关终止')}`
             continue
           }
           if (evt.usage) {
@@ -177,7 +178,7 @@ async function send() {
         : '\n[已停止]'
     } else {
       assistant.error = true
-      assistant.content = '网络错误：' + (e.message || e)
+      assistant.content = `网络错误：${extractGatewayMessage(e, '请求失败')}`
     }
   } finally {
     window.clearTimeout(timeoutId)
@@ -203,7 +204,9 @@ onBeforeUnmount(stop)
 
     <div class="surface playground-shell rise" style="--i: 1">
       <aside class="playground-config">
-        <div class="config-kicker mono"><TerminalSquare :size="14" :stroke-width="1.7" /> REQUEST CONFIG</div>
+        <div class="config-kicker mono">
+          <TerminalSquare :size="14" :stroke-width="1.7" /> REQUEST CONFIG
+        </div>
         <div class="config-block">
           <label class="config-label mono" for="playground-key">01 / API KEY</label>
           <el-input
@@ -214,7 +217,12 @@ onBeforeUnmount(stop)
           >
             <template #prefix><KeyRound :size="15" :stroke-width="1.7" /></template>
             <template #suffix>
-              <button class="input-action" type="button" :aria-label="keyVisible ? '隐藏 API Key' : '显示 API Key'" @click="keyVisible = !keyVisible">
+              <button
+                class="input-action"
+                type="button"
+                :aria-label="keyVisible ? '隐藏 API Key' : '显示 API Key'"
+                @click="keyVisible = !keyVisible"
+              >
                 <EyeOff v-if="keyVisible" :size="15" :stroke-width="1.7" />
                 <Eye v-else :size="15" :stroke-width="1.7" />
               </button>
@@ -224,9 +232,21 @@ onBeforeUnmount(stop)
         </div>
         <div class="config-block">
           <label class="config-label mono" for="playground-model">02 / MODEL OR ALIAS</label>
-          <el-input id="playground-model" v-model="config.model" placeholder="default / auto / cheap" />
+          <el-input
+            id="playground-model"
+            v-model="config.model"
+            placeholder="default / auto / cheap"
+          />
           <div class="model-chips mono">
-            <button v-for="model in ['default', 'auto', 'cheap']" :key="model" type="button" :class="{ active: config.model === model }" @click="config.model = model">{{ model }}</button>
+            <button
+              v-for="model in ['default', 'auto', 'cheap']"
+              :key="model"
+              type="button"
+              :class="{ active: config.model === model }"
+              @click="config.model = model"
+            >
+              {{ model }}
+            </button>
           </div>
         </div>
         <div class="config-divider"></div>
@@ -252,7 +272,12 @@ onBeforeUnmount(stop)
         </div>
 
         <div ref="listEl" class="chat-list">
-          <EmptyState v-if="messages.length === 0" :icon="Sparkles" title="等待第一条消息" hint="填入 Key 与模型后，用 Ctrl + Enter 发起流式请求" />
+          <EmptyState
+            v-if="messages.length === 0"
+            :icon="Sparkles"
+            title="等待第一条消息"
+            hint="填入 Key 与模型后，用 Ctrl + Enter 发起流式请求"
+          />
           <div v-for="(m, i) in messages" :key="i" class="bubble-row" :class="m.role">
             <div class="bubble-avatar" :class="m.role">
               <UserRound v-if="m.role === 'user'" :size="15" :stroke-width="1.8" />
@@ -266,10 +291,19 @@ onBeforeUnmount(stop)
         </div>
 
         <div class="stats" v-if="stats.elapsedMs !== null || stats.ttftMs !== null">
-          <el-tag v-if="stats.ttftMs !== null" type="info" effect="plain"><Timer :size="13" /> 首字 {{ stats.ttftMs }} ms</el-tag>
-          <el-tag v-if="stats.elapsedMs !== null" type="info" effect="plain"><Gauge :size="13" /> 总耗时 {{ stats.elapsedMs }} ms</el-tag>
-          <el-tag v-if="stats.usage" type="info" effect="plain"><Boxes :size="13" /> Token {{ stats.usage.prompt_tokens }} 入 / {{ stats.usage.completion_tokens }} 出</el-tag>
-          <el-tag v-if="stats.requestId" type="info" effect="plain" class="mono">ID {{ stats.requestId }}</el-tag>
+          <el-tag v-if="stats.ttftMs !== null" type="info" effect="plain"
+            ><Timer :size="13" /> 首字 {{ stats.ttftMs }} ms</el-tag
+          >
+          <el-tag v-if="stats.elapsedMs !== null" type="info" effect="plain"
+            ><Gauge :size="13" /> 总耗时 {{ stats.elapsedMs }} ms</el-tag
+          >
+          <el-tag v-if="stats.usage" type="info" effect="plain"
+            ><Boxes :size="13" /> Token {{ stats.usage.prompt_tokens }} 入 /
+            {{ stats.usage.completion_tokens }} 出</el-tag
+          >
+          <el-tag v-if="stats.requestId" type="info" effect="plain" class="mono"
+            >ID {{ stats.requestId }}</el-tag
+          >
         </div>
 
         <div class="composer">
@@ -364,7 +398,10 @@ onBeforeUnmount(stop)
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.09);
   cursor: pointer;
-  transition: color 0.2s var(--swift), border-color 0.2s var(--swift), background 0.2s var(--swift);
+  transition:
+    color 0.2s var(--swift),
+    border-color 0.2s var(--swift),
+    background 0.2s var(--swift);
 }
 
 .model-chips button:hover,
@@ -587,7 +624,9 @@ onBeforeUnmount(stop)
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 850px) {

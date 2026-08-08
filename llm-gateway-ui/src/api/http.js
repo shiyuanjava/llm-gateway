@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import router from '../router'
 import { getToken, clearSession } from '../auth/session'
 import { API_BASE_URL, API_TIMEOUT_MS, createRequestId } from '../config/runtime'
+import { extractGatewayMessage } from './error'
 
 const REQUEST_ID_HEADER = 'X-Request-Id'
 let handlingUnauthorized = false
@@ -52,12 +53,13 @@ http.interceptors.response.use(
       return body.data
     }
     const requestId = requestIdOf(response, response.config)
-    const error = new Error(body.msg || '请求失败')
+    const message = extractGatewayMessage(body, '请求失败')
+    const error = new Error(message)
     error.code = body.code
     error.requestId = requestId
     error.response = response
     if (router.currentRoute.value.path !== '/login') {
-      ElMessage.error(withRequestId(error.message, requestId))
+      ElMessage.error(withRequestId(message, requestId))
     }
     return Promise.reject(error)
   },
@@ -81,7 +83,7 @@ http.interceptors.response.use(
     if (onLoginPage) {
       return Promise.reject(error) // 登录页的错误(如 423 锁定)由 Login.vue 统一提示,避免双 toast
     }
-    const msg = error.response?.data?.msg || error.message || '网络错误'
+    const msg = extractGatewayMessage(error)
     ElMessage.error(withRequestId(msg, requestId))
     return Promise.reject(error)
   }

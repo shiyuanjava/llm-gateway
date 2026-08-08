@@ -14,6 +14,7 @@ import {
   RadioTower,
 } from 'lucide-vue-next'
 import { authApi } from '../api'
+import { extractGatewayMessage } from '../api/error'
 import { setSession } from '../auth/session'
 import GatewayLogo from '../components/GatewayLogo.vue'
 
@@ -37,8 +38,9 @@ async function submit() {
     // 登录页的错误提示由这里统一负责(http 拦截器在登录页保持静默)
     const requestId = e?.requestId ? ` · 请求 ID ${e.requestId}` : ''
     if (e?.response?.status === 401) ElMessage.error(`用户名或密码错误${requestId}`)
-    else if (e?.response?.status === 423) ElMessage.error(`登录失败次数过多,请 5 分钟后再试${requestId}`)
-    else ElMessage.error(`${e?.response?.data?.msg || e?.message || '网络错误,请稍后重试'}${requestId}`)
+    else if (e?.response?.status === 423)
+      ElMessage.error(`登录失败次数过多,请 5 分钟后再试${requestId}`)
+    else ElMessage.error(`${extractGatewayMessage(e, '请求失败')}${requestId}`)
   } finally {
     loading.value = false
   }
@@ -233,10 +235,9 @@ const features = [
       <div class="marquee mono" aria-hidden="true">
         <div class="marquee-track">
           <span v-for="n in 2" :key="n" class="marquee-seg">
-            auto / deepseek-v4-pro &nbsp;/&nbsp; cheap / mock-small
-            &nbsp;/&nbsp; smart / escalate &gt; 4k &nbsp;/&nbsp; fallback chain
-            &nbsp;/&nbsp; sse streaming &nbsp;/&nbsp; cost attribution
-            &nbsp;/&nbsp;
+            auto / deepseek-v4-pro &nbsp;/&nbsp; cheap / mock-small &nbsp;/&nbsp; smart / escalate
+            &gt; 4k &nbsp;/&nbsp; fallback chain &nbsp;/&nbsp; sse streaming &nbsp;/&nbsp; cost
+            attribution &nbsp;/&nbsp;
           </span>
         </div>
       </div>
@@ -309,8 +310,7 @@ const features = [
   overflow: hidden;
   background:
     radial-gradient(90% 90% at 15% 10%, rgba(124, 92, 255, 0.14), transparent 60%),
-    radial-gradient(70% 80% at 95% 90%, rgba(34, 211, 238, 0.1), transparent 60%),
-    #08090b;
+    radial-gradient(70% 80% at 95% 90%, rgba(34, 211, 238, 0.1), transparent 60%), #08090b;
 }
 .field {
   position: absolute;
