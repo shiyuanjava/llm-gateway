@@ -1549,6 +1549,20 @@ sudo docker compose -f /opt/ztmdcg/apps/llm-gateway/docker-compose.yml \
 
 ## 10. 创建软项智训密钥并首次发布
 
+### 10.0 顺序说明：为什么软项智训要排在 Gateway 之后
+
+`soft-training.env` 里的 `LLM_GATEWAY_API_KEY` 必须由 Gateway 管理台生成（见 9.3），所以本章依赖第 9 章已经完成。
+
+如果先推了软项智训，`deploy_production` 会在前置检查处停下：
+
+```text
+missing required file: /opt/ztmdcg/secrets/soft-training.env
+```
+
+这是**预期行为，不是故障**。`deploy/scripts/deploy-production.sh` 在启动任何容器之前就校验密钥文件，宁可停下也不带着空密钥部署——那样会得到一个能登录但 AI 全挂、且排查方向完全错的环境。看到这条信息就回到第 9 章把 Gateway 走完，再执行 10.1。
+
+确实需要先验证软项智训的部署链路（比如 Gateway 侧还在排查）时，可以先建文件、把两个 Key 留占位：`LLM_GATEWAY_API_KEY=sk-gw-placeholder-replace-after-gateway-ready`、`DASHSCOPE_API_KEY=` 留空，其余键按 10.1 正常生成。代价是 AI 评分、知识入库、带来源问答会失败，登录、上传、课程管理正常；Gateway 就绪后把真值填回去并重跑一次 `deploy_production`。**不要**把占位符状态当成部署完成。
+
 ### 10.1 创建 `soft-training.env`
 
 在腾讯云执行：

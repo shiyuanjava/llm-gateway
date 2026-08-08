@@ -123,6 +123,12 @@ services:
     depends_on:
       nacos:
         condition: service_healthy
+    # 与 nacos 服务的同名变量保持一致:init.sh 靠这对 identity 头绕过
+    # /v3/admin/** 的强制鉴权(3.0 起 NACOS_AUTH_ENABLED=false 关不掉它)。
+    # 改动 nacos 侧的 identity 值时,这里必须同步,否则脚本会拿到 403。
+    environment:
+      NACOS_AUTH_IDENTITY_KEY: nacos-local
+      NACOS_AUTH_IDENTITY_VALUE: nacos-local
     volumes: [./nacos-init/init.sh:/init.sh:ro]
     entrypoint: ["sh", "/init.sh"]
     restart: "no"

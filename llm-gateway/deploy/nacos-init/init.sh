@@ -6,24 +6,31 @@
 # 注意:本文件是 deploy/platform/nacos-init/init.sh 的本地开发副本,改动需同步。
 set -eu
 # Nacos 3.x 接口:v1/v2 旧接口在 3.0 默认禁用、3.2.0 起移除,必须用 v3。
-# 走 console 接口(8080)而不是 admin 接口(8848/v3/admin):3.0 起 admin 接口的鉴权
-# 有独立开关且默认强制开启,NACOS_AUTH_ENABLED=false 关不掉它,脚本会拿到 403。
 # 与 v1 的差异:参数 group -> groupName;namespaceId 默认值从空串改为 public。
-NACOS="http://nacos:8080/v3/console/cs/config"
+#
+# 鉴权:3.0 起 /v3/admin/** 强制要求管理员身份,NACOS_AUTH_ENABLED=false 关不掉,
+# 直接请求会得到 403 "User not found"。这里走 server identity 头 —— compose 里
+# 配置的 NACOS_AUTH_IDENTITY_KEY/VALUE 定义了一对请求头,携带它的请求被视为
+# 服务端内部调用而跳过鉴权。console 接口(8080)不认这个头,只能用 admin 接口。
+NACOS="http://nacos:8848/nacos/v3/admin/cs/config"
 NS="public"
+IDENTITY_KEY="${NACOS_AUTH_IDENTITY_KEY:-nacos-local}"
+IDENTITY_VALUE="${NACOS_AUTH_IDENTITY_VALUE:-nacos-local}"
+AUTH_HEADER="$IDENTITY_KEY: $IDENTITY_VALUE"
 
 # 判断 dataId 是否已存在。误判为「不存在」会覆盖掉你在控制台填好的密钥,
 # 属于静默丢数据,所以歧义时一律按「已存在」处理,宁可漏建也不覆盖。
 # 但鉴权/网络故障必须当场报错退出 —— 否则会打印一串「已存在,跳过」,
 # 看起来像成功,实际什么都没建,直到网关启动才暴露。
 exists() {
-  body=$(curl -s "$NACOS?dataId=$1&groupName=DEFAULT_GROUP&namespaceId=$NS" 2>/dev/null || true)
+  body=$(curl -s -H "$AUTH_HEADER" \
+    "$NACOS?dataId=$1&groupName=DEFAULT_GROUP&namespaceId=$NS" 2>/dev/null || true)
   case "$body" in
-    *'"content"'*)                return 0 ;;
-    *'"data":null'*)              return 1 ;;
-    *'config data not exist'*)    return 1 ;;
-    *Forbidden*|*Unauthorized*|*'User not found'*|*'403'*|*'401'*)
-      echo "错误:Nacos 拒绝了本次查询($1),鉴权未通过,已放弃发布配置。" >&2
+    *'"content"'*)                                    return 0 ;;
+    *'"data":null'*|*'not exist'*|*'"status":404'*)   return 1 ;;
+    *Forbidden*|*Unauthorized*|*'User not found'*|*'"status":403'*|*'"status":401'*)
+      echo "错误:Nacos 拒绝了本次查询($1),identity 头未通过鉴权,已放弃发布配置。" >&2
+      echo "请核对 compose 中 NACOS_AUTH_IDENTITY_KEY/VALUE 与本脚本一致。" >&2
       echo "响应:$body" >&2
       exit 1
       ;;
@@ -44,7 +51,7 @@ else
   # 运营参数:与 application.yaml 中 gateway.* 同结构,Nacos 侧优先级更高。
   # 应用密钥:以「环境变量同名的顶层键」发布,喂给 application*.yaml 里的 ${XXX:} 占位符;
   # 环境变量若显式设置仍然优先(本地开发/CI 测试用),生产以 Nacos 为准。
-  curl -fsS -X POST "$NACOS" \
+  curl -fsS -X POST "$NACOS" -H "$AUTH_HEADER" \
     --data-urlencode "dataId=llm-gateway.yaml" \
     --data-urlencode "groupName=DEFAULT_GROUP" \
     --data-urlencode "namespaceId=$NS" \
@@ -85,7 +92,7 @@ if exists "llm-gateway-param-flow-rules"; then
   echo "llm-gateway-param-flow-rules 已存在,跳过"
 else
   # Sentinel 热点参数规则:chat-completion 资源,参数 0(租户),单租户 5 QPS
-  curl -fsS -X POST "$NACOS" \
+  curl -fsS -X POST "$NACOS" -H "$AUTH_HEADER" \
     --data-urlencode "dataId=llm-gateway-param-flow-rules" \
     --data-urlencode "groupName=DEFAULT_GROUP" \
     --data-urlencode "namespaceId=$NS" \
