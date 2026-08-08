@@ -1565,21 +1565,20 @@ missing required file: /opt/ztmdcg/secrets/soft-training.env
 
 ### 10.1 创建 `soft-training.env`
 
-在腾讯云执行：
+在腾讯云执行。本节**完全不使用交互式输入**，每段都可以整块粘贴。
+
+早期版本用 `sudo -i` 加一串 `read` 提示你逐个输入密钥，实践中连续失败两次，原因是终端粘贴与 `read` 的交互：整块粘贴时所有文本一次性进入输入队列，`read` 会把紧跟其后的**命令文本**当成你输入的值读走，而不是停下等你敲键盘。错位后要么校验失败被 `exit 1` 踢出 root shell（文件没建），要么 `. platform.env` 根本没在写文件的那个 shell 里执行过（文件建了但值全空，随后 `docker compose` 报 `required variable ... is missing a value`）。两种失败都不给出直指原因的报错。
+
+「逐条粘贴、等提示出现再输值」这类要求本身就不可靠，因此改为下面的非交互写法。
+
+第一步，生成文件。密钥从 `platform.env` 读取，JWT 与临时管理员密码随机生成，两个外部 API Key 先留空：
 
 ```bash
-sudo -i
+sudo bash -c '
+set -eu
 umask 027
 . /opt/ztmdcg/secrets/platform.env
-
-read -rsp 'Gateway business API Key: ' LLM_GATEWAY_API_KEY; echo
-read -rsp 'DashScope API Key: ' DASHSCOPE_API_KEY; echo
-read -rp 'Bootstrap admin username: ' BOOTSTRAP_ADMIN_USERNAME
-read -rsp 'Bootstrap admin temporary password: ' BOOTSTRAP_ADMIN_PASSWORD; echo
-[[ "$BOOTSTRAP_ADMIN_USERNAME" =~ ^[A-Za-z0-9._-]{3,64}$ ]] || { echo 'invalid bootstrap admin username' >&2; exit 1; }
-[[ ${#BOOTSTRAP_ADMIN_PASSWORD} -ge 16 ]] || { echo 'bootstrap admin password must be at least 16 characters' >&2; exit 1; }
-JWT_SECRET="$(openssl rand -hex 32)"
-
+: "${SOFT_MYSQL_PASSWORD:?platform.env 未正确加载,已中止}"
 cat > /opt/ztmdcg/secrets/soft-training.env <<EOF
 SOFT_MYSQL_DATABASE=${SOFT_MYSQL_DATABASE}
 SOFT_MYSQL_USER=${SOFT_MYSQL_USER}
@@ -1587,25 +1586,51 @@ SOFT_MYSQL_PASSWORD=${SOFT_MYSQL_PASSWORD}
 SOFT_REDIS_PASSWORD=${SOFT_REDIS_PASSWORD}
 MINIO_ROOT_USER=${MINIO_ROOT_USER}
 MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-JWT_SECRET=${JWT_SECRET}
+JWT_SECRET=$(openssl rand -hex 32)
 JWT_ACCESS_EXPIRATION_SECONDS=900
 JWT_REFRESH_EXPIRATION_SECONDS=604800
 BOOTSTRAP_ADMIN_ENABLED=true
-BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME}
-BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD}
+BOOTSTRAP_ADMIN_USERNAME=ztmdcg-admin
+BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -hex 16)
 BOOTSTRAP_ADMIN_REAL_NAME=平台管理员
-LLM_GATEWAY_API_KEY=${LLM_GATEWAY_API_KEY}
-DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+LLM_GATEWAY_API_KEY=
+DASHSCOPE_API_KEY=
 EOF
-
 chown root:gitlab-runner /opt/ztmdcg/secrets/soft-training.env
 chmod 640 /opt/ztmdcg/secrets/soft-training.env
-stat -c '%U %G %a %n' /opt/ztmdcg/secrets/soft-training.env
-unset LLM_GATEWAY_API_KEY DASHSCOPE_API_KEY BOOTSTRAP_ADMIN_PASSWORD JWT_SECRET
-exit
+'
 ```
 
-成功标志：文件权限显示 `root gitlab-runner 640`。生产迁移会清除 `20240001`、`teacher`、`admin` 演示账号，首次登录必须使用这里创建的一次性管理员；该账号会被要求立即改密。
+用 `sudo bash -c` 而不是 `sudo -i`：整段作为一个脚本执行，不受粘贴时序影响。`: "${SOFT_MYSQL_PASSWORD:?...}"` 是防呆——`platform.env` 没加载成功就当场中止，不会再写出一个全空文件让问题推迟到部署时才暴露。
+
+第二步，验证每个键都有值（只打印键名与值长度，不打印明文）：
+
+```bash
+sudo stat -c '%U %G %a %n' /opt/ztmdcg/secrets/soft-training.env
+sudo awk -F= 'NF{printf "%-38s len=%d\n", $1, length($0)-length($1)-1}' /opt/ztmdcg/secrets/soft-training.env
+```
+
+成功标志：权限为 `root gitlab-runner 640`；除 `LLM_GATEWAY_API_KEY` 与 `DASHSCOPE_API_KEY` 外，其余 `len` 均大于 0。若 `SOFT_MYSQL_PASSWORD` 等为 0，不要继续部署，回第一步排查 `platform.env`。
+
+第三步，填入外部 API Key。用 `sed` 定点替换，同样不涉及交互输入：
+
+```bash
+sudo sed -i 's#^LLM_GATEWAY_API_KEY=.*#LLM_GATEWAY_API_KEY=<Gateway管理台生成的Key>#' /opt/ztmdcg/secrets/soft-training.env
+sudo sed -i 's#^DASHSCOPE_API_KEY=.*#DASHSCOPE_API_KEY=<DashScope的Key>#' /opt/ztmdcg/secrets/soft-training.env
+sudo grep -c '^LLM_GATEWAY_API_KEY=..*' /opt/ztmdcg/secrets/soft-training.env
+```
+
+最后一条返回 `1` 表示已填入。Key 里若包含 `#`，把 `sed` 的分隔符换成其他未出现的字符。
+
+Gateway 尚未走完第 9 章、拿不到 Key 时，可以先留空直接部署：软项智训能正常启动，登录、上传、课程管理都可用，只有 AI 评分、知识入库、带来源问答会失败。拿到 Key 后回到第三步填入并重跑一次 `deploy_production`。**不要把留空状态当作部署完成。**
+
+第四步，取出自动生成的一次性管理员账号并存进密码管理器：
+
+```bash
+sudo grep -E '^BOOTSTRAP_ADMIN_(USERNAME|PASSWORD)=' /opt/ztmdcg/secrets/soft-training.env
+```
+
+生产迁移会清除 `20240001`、`teacher`、`admin` 演示账号，首次登录必须使用这里的一次性管理员；该账号会被要求立即改密。想自定义用户名或密码，用第三步同样的 `sed` 方式改这两行即可。
 
 ### 10.2 触发并观察发布
 
