@@ -117,7 +117,7 @@ public class GatewayService {
             metrics.incRequest(principal.tenant(), request.model());
 
             // 5. 缓存：命中即直接返回
-            Optional<ChatCompletionResponse> cached = cacheService.lookup(request);
+            Optional<ChatCompletionResponse> cached = cacheService.lookup(request, principal.tenant());
             if (cached.isPresent()) {
                 return finish(context, cached.get(), true);
             }
@@ -134,7 +134,7 @@ public class GatewayService {
             // 8. 出站护栏：回复内容安全
             guardrailEngine.checkOutput(response);
             // 9. 写缓存
-            cacheService.store(request, response);
+            cacheService.store(request, response, principal.tenant());
             // 10. 计费 + 指标 + 落库审计 + 访问日志
             return finish(context, response, false);
         } catch (GatewayException e) {
@@ -176,7 +176,7 @@ public class GatewayService {
             metrics.incStreamRequest();
 
             // 5. 缓存：命中即把完整响应回放成 SSE
-            Optional<ChatCompletionResponse> cached = cacheService.lookup(request);
+            Optional<ChatCompletionResponse> cached = cacheService.lookup(request, principal.tenant());
             if (cached.isPresent()) {
                 // 回放前先记下模型与命中标记:回放中断时审计不丢 served_model、不误计上游成本
                 context.setServedModel(cached.get().model());
@@ -216,7 +216,7 @@ public class GatewayService {
                         TokenEstimator.estimate(aggregator.model(), aggregator.text()));
             }
             ChatCompletionResponse assembled = aggregator.buildResponse(usage);
-            cacheService.store(request, assembled);
+            cacheService.store(request, assembled, principal.tenant());
             if (request.wantsUsageChunk()) {
                 writer.write(
                         ChatCompletionChunk.usageOnly(assembled.id(), assembled.created(), assembled.model(), usage));
@@ -300,6 +300,11 @@ public class GatewayService {
             StreamAggregator aggregator,
             String status,
             String errorCode) {
+        if (context.audited()) {
+            // finish 已经落过账：这里再写就是同一个 request_id 的第二行，会被配额求和重复计入
+            log.warn("[gateway] 收尾之后才失败，跳过重复审计 reqId={}", context.requestId());
+            return;
+        }
         try {
             String servedModel = aggregator.model() != null ? aggregator.model() : context.servedModel();
             int promptTokens = TokenEstimator.estimate(servedModel, request.messages());
@@ -308,22 +313,24 @@ public class GatewayService {
             // 缓存命中路径(回放后 finish 阶段失败落到此)没有上游调用,成本恒 0;cache_hit 列透传上下文
             double cost = servedModel == null || context.cacheHit() ? 0.0 : costCalculator.cost(servedModel, usage);
             long latencyMs = context.elapsedMillis(System.nanoTime());
-            requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(),
-                    context.tenant(),
-                    context.requestedModel(),
-                    servedModel,
-                    promptTokens,
-                    completionTokens,
-                    usage.totalTokens(),
-                    0,
-                    0,
-                    cost,
-                    context.cacheHit(),
-                    status,
-                    errorCode,
-                    latencyMs));
-            quotaService.recordUsage(context.tenant(), usage.totalTokens());
+            saveAudit(
+                    context,
+                    new RequestLogRecord(
+                            context.requestId(),
+                            context.tenant(),
+                            context.requestedModel(),
+                            servedModel,
+                            promptTokens,
+                            completionTokens,
+                            usage.totalTokens(),
+                            0,
+                            0,
+                            cost,
+                            context.cacheHit(),
+                            status,
+                            errorCode,
+                            latencyMs));
+            settleQuota(context, usage.totalTokens());
         } catch (RuntimeException ex) {
             log.warn("写入流式中断审计记录时出错：{}", ex.getMessage());
         }
@@ -336,21 +343,23 @@ public class GatewayService {
     private void persistCacheReplayAborted(GatewayContext context) {
         try {
             long latencyMs = context.elapsedMillis(System.nanoTime());
-            requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(),
-                    context.tenant(),
-                    context.requestedModel(),
-                    context.servedModel(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0.0,
-                    true,
-                    "client_aborted",
-                    null,
-                    latencyMs));
+            saveAudit(
+                    context,
+                    new RequestLogRecord(
+                            context.requestId(),
+                            context.tenant(),
+                            context.requestedModel(),
+                            context.servedModel(),
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0.0,
+                            true,
+                            "client_aborted",
+                            null,
+                            latencyMs));
         } catch (RuntimeException ex) {
             log.warn("写入缓存回放中断审计记录时出错：{}", ex.getMessage());
         }
@@ -395,26 +404,58 @@ public class GatewayService {
         long latencyMs = context.elapsedMillis(now);
         metrics.recordLatency(latencyMs);
 
-        requestLogRepository.save(new RequestLogRecord(
-                context.requestId(),
-                context.tenant(),
-                context.requestedModel(),
-                response.model(),
-                promptTokens,
-                completionTokens,
-                totalTokens,
-                usage == null ? 0 : usage.cacheReadTokens(),
-                usage == null ? 0 : usage.cacheCreationTokens(),
-                cost,
-                cacheHit,
-                cacheHit ? "cache_hit" : "success",
-                null,
-                latencyMs));
+        saveAudit(
+                context,
+                new RequestLogRecord(
+                        context.requestId(),
+                        context.tenant(),
+                        context.requestedModel(),
+                        response.model(),
+                        promptTokens,
+                        completionTokens,
+                        totalTokens,
+                        usage == null ? 0 : usage.cacheReadTokens(),
+                        usage == null ? 0 : usage.cacheCreationTokens(),
+                        cost,
+                        cacheHit,
+                        cacheHit ? "cache_hit" : "success",
+                        null,
+                        latencyMs));
 
-        quotaService.recordUsage(context.tenant(), totalTokens);
+        settleQuota(context, totalTokens);
 
         log.info("[gateway] {}", context.toLogLine(now));
         return response;
+    }
+
+    /**
+     * 落一行请求审计。每个 request_id 只允许写一次：{@code request_log} 没有 request_id 唯一索引，
+     * 而配额真值源是该表的 {@code SUM(total_tokens)}，第二行会被直接计入租户用量。
+     */
+    private void saveAudit(GatewayContext context, RequestLogRecord record) {
+        if (!context.claimAudit()) {
+            log.warn("[gateway] 重复的审计写入被丢弃 reqId={} status={}", context.requestId(), record.status());
+            return;
+        }
+        requestLogRepository.save(record);
+    }
+
+    /**
+     * 配额记账：内存快照缺失时会回查数据库，DB 抖动即抛异常。这是响应已经产生之后的旁路，
+     * 失败只降级为告警——不能把一次已经付出上游成本、内容也已交付的请求翻成 500。
+     * 少记的部分由 TTL 过期后按 {@code request_log} 重建快照补回。
+     */
+    private void settleQuota(GatewayContext context, long tokens) {
+        try {
+            quotaService.recordUsage(context.tenant(), tokens);
+        } catch (RuntimeException e) {
+            log.warn(
+                    "[gateway] 配额记账失败 reqId={} tenant={} tokens={}：{}",
+                    context.requestId(),
+                    context.tenant(),
+                    tokens,
+                    e.getMessage());
+        }
     }
 
     /**
@@ -427,21 +468,23 @@ public class GatewayService {
     private void persistInternal(GatewayContext context) {
         long now = System.nanoTime();
         try {
-            requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(),
-                    context.tenant(),
-                    context.requestedModel(),
-                    null,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0.0,
-                    false,
-                    "error",
-                    "internal_error",
-                    context.elapsedMillis(now)));
+            saveAudit(
+                    context,
+                    new RequestLogRecord(
+                            context.requestId(),
+                            context.tenant(),
+                            context.requestedModel(),
+                            null,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0.0,
+                            false,
+                            "error",
+                            "internal_error",
+                            context.elapsedMillis(now)));
         } catch (RuntimeException auditFailure) {
             log.warn("写入 internal 错误审计记录时出错：{}", auditFailure.getMessage());
         }
@@ -450,21 +493,23 @@ public class GatewayService {
     private void persistError(GatewayContext context, GatewayException e) {
         long now = System.nanoTime();
         try {
-            requestLogRepository.save(new RequestLogRecord(
-                    context.requestId(),
-                    context.tenant(),
-                    context.requestedModel(),
-                    null,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0.0,
-                    false,
-                    "error",
-                    e.code(),
-                    context.elapsedMillis(now)));
+            saveAudit(
+                    context,
+                    new RequestLogRecord(
+                            context.requestId(),
+                            context.tenant(),
+                            context.requestedModel(),
+                            null,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0.0,
+                            false,
+                            "error",
+                            e.code(),
+                            context.elapsedMillis(now)));
         } catch (RuntimeException ex) {
             // 落审计失败不应掩盖原始错误
             log.warn("写入失败审计记录时出错：{}", ex.getMessage());

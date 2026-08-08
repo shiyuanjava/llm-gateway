@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,7 +51,7 @@ class GatewayServiceUnexpectedFailureTest {
                 metrics,
                 requestLogs,
                 new ObjectMapper());
-        when(cacheService.lookup(any())).thenThrow(new IllegalStateException("boom"));
+        when(cacheService.lookup(any(), anyString())).thenThrow(new IllegalStateException("boom"));
         ChatCompletionRequest request =
                 new ChatCompletionRequest("alias", List.of(ChatMessage.user("hello")), null, null, null, null, null);
 

@@ -18,6 +18,7 @@ public class GatewayContext {
     private int totalTokens;
     private double cost;
     private boolean streamed;
+    private boolean audited;
     private long firstTokenMillis = -1;
 
     /**
@@ -76,6 +77,25 @@ public class GatewayContext {
 
     public boolean streamed() {
         return streamed;
+    }
+
+    /**
+     * 认领本次请求的审计写入权。每个 request_id 只允许落一行 {@code request_log}：
+     * 配额真值源是该表的 {@code SUM(total_tokens)}，第二行会被直接计入租户用量。
+     *
+     * @return 首次调用返回 true，其后一律返回 false
+     */
+    public boolean claimAudit() {
+        if (audited) {
+            return false;
+        }
+        audited = true;
+        return true;
+    }
+
+    /** @return 是否已经落过审计记录 */
+    public boolean audited() {
+        return audited;
     }
 
     /** @param firstTokenMillis 首帧写出时距请求开始的毫秒数（TTFT） */

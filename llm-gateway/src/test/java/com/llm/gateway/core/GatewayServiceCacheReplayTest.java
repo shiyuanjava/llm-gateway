@@ -35,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -68,7 +69,7 @@ class GatewayServiceCacheReplayTest {
 
         ChatCompletionResponse cached = new ChatCompletionResponse(
                 "chatcmpl-x", "chat.completion", 1L, "mock-served-model", null, Usage.of(1, 2));
-        when(cacheService.lookup(any())).thenReturn(Optional.of(cached));
+        when(cacheService.lookup(any(), anyString())).thenReturn(Optional.of(cached));
 
         // 首帧写出即失败 → SseWriter 把 IOException 转成 ClientDisconnectedException
         HttpServletResponse servletResponse = mock(HttpServletResponse.class);
@@ -111,7 +112,7 @@ class GatewayServiceCacheReplayTest {
                 requestLogRepository,
                 new ObjectMapper());
 
-        when(cacheService.lookup(any())).thenReturn(Optional.empty());
+        when(cacheService.lookup(any(), anyString())).thenReturn(Optional.empty());
         // RouteDecision.chain() 恒含 primary(真实 record 无法构造空链);costCalculator 为 mock,
         // requirePricing 是 no-op,单目标真实对象即可
         when(router.route(any())).thenReturn(new RouteDecision(new ProviderTarget("mock", "mock-model"), List.of()));
