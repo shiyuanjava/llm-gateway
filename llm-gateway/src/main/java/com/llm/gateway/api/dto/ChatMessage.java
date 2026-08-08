@@ -1,27 +1,30 @@
 package com.llm.gateway.api.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-/**
- * 一条对话消息（OpenAI Chat 协议）。
- *
- * @param role    角色：{@code system} / {@code user} / {@code assistant}
- * @param content 文本内容
- */
+/** A single OpenAI-compatible chat message. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ChatMessage(String role, String content) {
+public record ChatMessage(
+        @NotBlank(message = "role 不能为空")
+                @Size(max = 16, message = "role 不能超过 16 个字符")
+                @Pattern(regexp = "system|user|assistant|tool", message = "role 仅允许 system、user、assistant、tool")
+                String role,
+        @NotNull(message = "content 不能为 null") @Size(max = 262_144, message = "content 不能超过 262144 个字符")
+                String content) {
 
-    /** 便捷构造一条 user 消息。 */
     public static ChatMessage user(String content) {
         return new ChatMessage("user", content);
     }
 
-    /** 便捷构造一条 assistant 消息。 */
     public static ChatMessage assistant(String content) {
         return new ChatMessage("assistant", content);
     }
 
-    /** 便捷构造一条 system 消息。 */
     public static ChatMessage system(String content) {
         return new ChatMessage("system", content);
     }
