@@ -110,6 +110,10 @@ deploy_production:
   stage: deploy
   tags: [ztmdcg-production]
   needs: [build_images]
+  # 平台镜像按手册 8.3 预拉到腾讯云本地,正常部署只换应用容器,几分钟内完成。
+  # 25 分钟而非默认 60:若卡在拉镜像(国内直连 Docker Hub 常低到 30-50 KB/s),
+  # 早失败早暴露,不占着部署锁空等一小时。
+  timeout: 25m
   variables:
     GIT_DEPTH: "1"
     DOCKER_HOST: "unix:///var/run/docker.sock"

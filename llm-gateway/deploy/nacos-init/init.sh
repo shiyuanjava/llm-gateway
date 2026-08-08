@@ -3,12 +3,26 @@
 # 只在 dataId 不存在时发布(create-if-absent):Nacos 是这些配置的唯一事实来源,
 # 重复部署/重建容器不会覆盖你在控制台里改过的值 —— 尤其是密钥。
 # 提示:改过本模板后,已有环境不会自动补新键,需在控制台手动补齐(或删除 dataId 后重跑)。
-# 注意:deploy/k8s/base/nacos-init.yaml 的 ConfigMap 内嵌了本脚本的副本,改动需同步。
+# 注意:本文件是 deploy/platform/nacos-init/init.sh 的本地开发副本,改动需同步。
 set -eu
-NACOS="http://nacos:8848/nacos/v1/cs/configs"
+# Nacos 3.x 接口:v1/v2 旧接口在 3.0 默认禁用、3.2.0 起移除,必须用 v3。
+# 与 v1 的差异:参数 group -> groupName;namespaceId 默认值从空串改为 public。
+NACOS="http://nacos:8848/nacos/v3/admin/cs/config"
+NS="public"
 
+# 判断 dataId 是否已存在。两种误判的后果不对称,所以歧义时一律按「已存在」处理:
+#   误判为不存在 -> 覆盖掉你在控制台填好的密钥,静默丢数据,不可接受;
+#   误判为已存在 -> 配置没建出来,网关启动时 fail-closed 报错,看得见也好补。
 exists() {
-  curl -fsS "$NACOS?dataId=$1&group=DEFAULT_GROUP" >/dev/null 2>&1
+  body=$(curl -s "$NACOS?dataId=$1&groupName=DEFAULT_GROUP&namespaceId=$NS" 2>/dev/null || true)
+  case "$body" in
+    *'"content"'*)   return 0 ;;
+    *'"data":null'*) return 1 ;;
+    *)
+      echo "警告:无法判断 $1 是否已存在,按已存在跳过发布。响应:$body" >&2
+      return 0
+      ;;
+  esac
 }
 
 if exists "llm-gateway.yaml"; then
@@ -19,7 +33,8 @@ else
   # 环境变量若显式设置仍然优先(本地开发/CI 测试用),生产以 Nacos 为准。
   curl -fsS -X POST "$NACOS" \
     --data-urlencode "dataId=llm-gateway.yaml" \
-    --data-urlencode "group=DEFAULT_GROUP" \
+    --data-urlencode "groupName=DEFAULT_GROUP" \
+    --data-urlencode "namespaceId=$NS" \
     --data-urlencode "type=yaml" \
     --data-urlencode "content=# ===== 运营参数(动态下发) =====
 gateway:
@@ -59,7 +74,8 @@ else
   # Sentinel 热点参数规则:chat-completion 资源,参数 0(租户),单租户 5 QPS
   curl -fsS -X POST "$NACOS" \
     --data-urlencode "dataId=llm-gateway-param-flow-rules" \
-    --data-urlencode "group=DEFAULT_GROUP" \
+    --data-urlencode "groupName=DEFAULT_GROUP" \
+    --data-urlencode "namespaceId=$NS" \
     --data-urlencode "type=json" \
     --data-urlencode 'content=[
   {

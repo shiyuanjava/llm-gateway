@@ -1422,6 +1422,50 @@ git -C "C:\practice\软项智训" push -u gitlab HEAD:main
 
 禁止使用 `--force` 覆盖已有生产历史。首次 push 后在 GitLab 保护 `main`。
 
+### 8.3 推送前先在腾讯云预拉平台镜像
+
+**这一步不能跳过。** 首次 `deploy_production` 要拉 7 个平台镜像共约 1.5GB。国内到 Docker Hub 的实测速度常低到 30-50 KB/s，`deploy_production` 未设 `timeout:`、按 GitLab 默认 60 分钟计算根本拉不完，Job 会在 `docker compose up -d --wait` 处被超时杀掉，结果是 `/opt/ztmdcg/platform/docker-compose.yml` 已写入但 `docker ps -a` 为空。
+
+先确认第 2 章配置的镜像加速真的生效，而不只是写进了文件：
+
+```bash
+docker info | grep -A 3 "Registry Mirrors"
+```
+
+成功标志：列出 `https://docker.m.daocloud.io`。若为空，说明 `daemon.json` 未加载，回到第 2 章重新执行 `dockerd --validate` 与 `systemctl restart docker`，不要带着无效加速继续。
+
+再预拉镜像。用 root 执行即可，镜像存在共享的 Docker daemon 里，`gitlab-runner` 用户的 CI Job 能直接命中缓存：
+
+```bash
+sudo docker compose --env-file /opt/ztmdcg/secrets/platform.env \
+  -f /opt/ztmdcg/platform/docker-compose.yml pull
+```
+
+首次运行慢属正常，全程可能几十分钟，让它跑完不要中断。若 `/opt/ztmdcg/platform/docker-compose.yml` 尚不存在（还没跑过任何流水线），先手工装一份：
+
+```bash
+sudo install -d -m 750 /opt/ztmdcg/platform
+sudo install -m 640 <本地仓库路径>/deploy/platform/docker-compose.yml /opt/ztmdcg/platform/docker-compose.yml
+```
+
+拉完核对：
+
+```bash
+sudo docker images --format '{{.Repository}}:{{.Tag}}' | sort
+```
+
+成功标志：`mysql:8.4`、`redis:7.4-alpine`、`minio/minio`、`qdrant/qdrant:v1.17.0`、`nacos/nacos-server:v3.1.1`、`bladex/sentinel-dashboard:1.8.8`、`curlimages/curl:8.10.1` 全部在列。
+
+预拉之后可以顺手把平台栈先跑起来，把问题和 CI 解耦——这样第一次流水线只需要处理应用容器：
+
+```bash
+sudo docker compose --env-file /opt/ztmdcg/secrets/platform.env \
+  -f /opt/ztmdcg/platform/docker-compose.yml up -d --wait
+sudo docker ps --format 'table {{.Names}}\t{{.Status}}'
+```
+
+成功标志：7 个平台容器均为 `healthy`。这一步失败时报错会直接打在终端上，比翻 CI 日志好定位。
+
 ## 9. 第一次 Gateway 发布
 
 ### 9.1 观察流水线
@@ -1447,13 +1491,28 @@ MySQL、两个 Redis、MinIO、Qdrant、Nacos、Sentinel 应已运行。
 
 ### 9.2 通过 SSH 隧道配置 Nacos
 
+**前提：`deploy_production` 必须已经执行过至少一次。** 平台组件（含 Nacos）由 `deploy/scripts/deploy-production.sh` 拉起，而该脚本只在 `deploy_production` Job 里运行。若 `build_images` 失败，`deploy_production` 因 `needs: [build_images]` 根本不会执行，腾讯云上不会有任何容器。
+
+先在腾讯云确认 Nacos 在跑，再开隧道：
+
+```bash
+sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E 'NAMES|nacos'
+sudo ss -lntp | grep 8850
+```
+
+成功标志：Nacos 容器状态含 `healthy`，且 `8850` 有 `docker-proxy` 监听。若 `docker ps` 为空，说明部署从未成功，回到第 9.1 节先让流水线跑通，不要在这里排查隧道。
+
 在本地电脑保持以下命令运行：
 
 ```powershell
 ssh -N -L 8850:127.0.0.1:8850 root@119.29.120.205
 ```
 
-浏览器打开 `http://127.0.0.1:8850/nacos/`，进入配置管理，编辑 `DEFAULT_GROUP` 下的 `llm-gateway.yaml`：
+隧道报 `channel N: open failed: connect failed: Connection refused` 时，refused 来自**远端**：SSH 已连通，但腾讯云本机的 `127.0.0.1:8850` 没有进程监听。这是容器没起来，不是隧道或防火墙问题，按上面两条命令查。
+
+浏览器打开 `http://127.0.0.1:8850/`，进入配置管理，编辑 `DEFAULT_GROUP` 下的 `llm-gateway.yaml`：
+
+**注意路径是根路径，不带 `/nacos`。** Nacos 3.x 把控制台从 2.x 的 `http://IP:8848/nacos` 改到了独立端口的根路径 `http://IP:8080/`（本文映射为宿主机 `8850`）。访问 `/nacos` 会得到 Spring 的 `No static resource nacos.` 报错——看到这个说明 Nacos 其实是正常的，只是路径用了旧版写法。
 
 ```yaml
 GATEWAY_JWT_SECRET: "<至少32字符随机值>"

@@ -1,10 +1,7 @@
 # LLM Gateway
 
-> **推荐（双机重装 · 仅 Docker Compose，无 K3s）手把手教程：**
+> **双机部署（GitLab CI/CD + Docker Compose）手把手教程：**
 > [`docs/dual-server-gitlab-docker-compose-guide.md`](docs/dual-server-gitlab-docker-compose-guide.md)
->
-> 历史单机 + K3s 教程（归档参考）：
-> [`docs/gitlab-docker-k3s-deployment-guide.md`](docs/gitlab-docker-k3s-deployment-guide.md)
 
 一个**生产级 LLM API 网关**:对外提供 OpenAI 兼容协议(含 SSE 流式),对内统一管理多供应商路由、鉴权、限流配额、内容护栏、缓存与 Token 级计费,并配套 Vue 3 管理控制台。单机可用 Docker Compose 一条命令拉起全套。
 
