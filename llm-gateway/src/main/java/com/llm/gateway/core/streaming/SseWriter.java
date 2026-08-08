@@ -26,6 +26,7 @@ public class SseWriter {
 
     private OutputStream out;
     private boolean started;
+    private boolean completed;
     private long firstFrameNanos;
 
     /**
@@ -42,6 +43,11 @@ public class SseWriter {
         return started;
     }
 
+    /** @return 是否已写出终帧 {@code [DONE]}；之后本流已对客户端结束，不得再追加任何帧 */
+    public boolean completed() {
+        return completed;
+    }
+
     /**
      * @return 首帧写出时刻的纳秒时间戳，未写出为 0（供 TTFT 统计）。
      *         {@link System#nanoTime()} 的原点是任意的，消费方应以 {@link #started()} 判断是否已写出首帧，
@@ -55,14 +61,19 @@ public class SseWriter {
      * 写出一帧 chunk。
      *
      * @param chunk 帧
+     * @throws IllegalStateException       终帧已写出（调用方流程有误）
      * @throws ClientDisconnectedException 客户端已断开
      */
     public void write(ChatCompletionChunk chunk) {
+        if (completed) {
+            throw new IllegalStateException("终帧已写出，不能再写内容帧");
+        }
         writeFrame(objectMapper.writeValueAsString(chunk));
     }
 
     /**
-     * 写出错误帧（仅用于首帧已发出后的中途失败）。
+     * 写出错误帧（仅用于首帧已发出、且终帧尚未写出的中途失败）。终帧之后调用是安静的空操作：
+     * 收尾记账阶段的失败不应该在 {@code [DONE]} 之后再往流里塞东西。
      *
      * @param code    机器可读错误码
      * @param message 人类可读信息
@@ -73,17 +84,24 @@ public class SseWriter {
         if (!started) {
             throw new IllegalStateException("错误帧仅用于首帧已发出后");
         }
+        if (completed) {
+            return;
+        }
         writeFrame(objectMapper.writeValueAsString(Map.of(
                 "error", Map.of("message", message == null ? "" : message, "type", "gateway_error", "code", code))));
     }
 
     /**
-     * 写出终帧 {@code data: [DONE]}。调用后不应再写帧。
+     * 写出终帧 {@code data: [DONE]}。幂等：重复调用不会写出第二个终帧。
      *
      * @throws ClientDisconnectedException 客户端已断开
      */
     public void done() {
+        if (completed) {
+            return;
+        }
         writeFrame("[DONE]");
+        completed = true;
     }
 
     /** 首帧懒提交响应头，之后逐帧写出并 flush。 */
